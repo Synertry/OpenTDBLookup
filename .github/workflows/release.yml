@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - run: dotnet restore
+      - run: dotnet test -c Release
+
+      - name: Publish
+        run: |
+          dotnet publish OpenTDBLookup -c Release -r win-x64 --self-contained `
+            -p:PublishSingleFile=true `
+            -p:PublishReadyToRun=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o ./publish
+
+      - name: Sign binary
+        env:
+          OPENTDB_CODESIGN_PFX_B64: ${{ secrets.CODESIGN_PFX_B64 }}
+          OPENTDB_CODESIGN_PASSWORD: ${{ secrets.CODESIGN_PASSWORD }}
+        run: pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/OpenTDBLookup.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenTDBLookup-${{ github.ref_name }}-win-x64
+          path: ./publish/OpenTDBLookup.exe
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./publish/OpenTDBLookup.exe
+          generate_release_notes: true
