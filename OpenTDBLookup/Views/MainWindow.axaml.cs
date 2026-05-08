@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Controls;
 using OpenTDBLookup.ViewModels;
@@ -34,12 +35,29 @@ public partial class MainWindow : Window
         }
     }
 
+    private MainWindowViewModel? _subscribedVm;
+
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
+        if (_subscribedVm is { } previous)
+        {
+            previous.InitialScrapeRequested -= OnInitialScrapeRequested;
+            previous.InitialScrapeCompleted -= OnInitialScrapeCompleted;
+            _subscribedVm = null;
+        }
         if (DataContext is MainWindowViewModel vm)
         {
             vm.InitialScrapeRequested += OnInitialScrapeRequested;
             vm.InitialScrapeCompleted += OnInitialScrapeCompleted;
+            _subscribedVm = vm;
+        }
+    }
+
+    private void OnCopyAnswerButtonClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm && vm.CopyAnswerToClipboardCommand.CanExecute(null))
+        {
+            vm.CopyAnswerToClipboardCommand.Execute(null);
         }
     }
 
@@ -92,15 +110,20 @@ public partial class MainWindow : Window
             };
             _activeScrapeDialog.CloseButtonClick += (_, _) =>
             {
-                if (DataContext is MainWindowViewModel vm) { vm.ActiveScrapeCts?.Cancel(); }
+                if (DataContext is MainWindowViewModel vm) { vm.CancelActiveScrape(); }
             };
             // Fire-and-forget; the VM raises InitialScrapeCompleted to dismiss.
             await _activeScrapeDialog.ShowAsync().ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
-            // The dialog throws if no top-level is associated yet; fall back
-            // to inline progress (the VM still drives the scrape).
+            // The dialog throws if no top-level is associated yet; the VM
+            // still drives the scrape, but we surface the failure to the
+            // status line so the user knows progress is happening invisibly.
+            if (DataContext is MainWindowViewModel vm)
+            {
+                vm.StatusMessage = $"Scrape dialog failed to open ({ex.Message}); progress will appear inline";
+            }
         }
     }
 

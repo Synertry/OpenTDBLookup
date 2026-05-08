@@ -92,7 +92,7 @@
             <ContentControl Content="{Binding CurrentMatch}"
                             IsVisible="{Binding CurrentMatch, Converter={x:Static ObjectConverters.IsNotNull}}">
                 <ContentControl.DataTemplates>
-                    <DataTemplate DataType="m:Question">
+                    <DataTemplate DataType="m:Question" x:DataType="m:Question">
                         <Border Padding="16"
                                 CornerRadius="8"
                                 Background="{DynamicResource SystemControlPageBackgroundChromeMediumBrush}">
@@ -113,17 +113,21 @@
                                                    FontWeight="Bold"
                                                    TextWrapping="Wrap"
                                                    VerticalAlignment="Center" />
+                                        <!-- Compiled bindings inside DataTemplates cannot dereference the
+                                             window's MainWindowViewModel via cast expressions, so the click
+                                             is handled in code-behind which resolves the VM and fires the
+                                             RelayCommand directly. -->
                                         <Button Grid.Column="1"
                                                 Margin="12,0,0,0"
                                                 Content="Copy"
                                                 VerticalAlignment="Center"
-                                                Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).CopyAnswerToClipboardCommand}" />
+                                                Click="OnCopyAnswerButtonClick" />
                                     </Grid>
                                 </Border>
 
                                 <ItemsControl ItemsSource="{Binding IncorrectAnswers}">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="sys:String">
+                                        <DataTemplate DataType="sys:String" x:DataType="sys:String">
                                             <Border Padding="8,4"
                                                     Margin="0,0,0,4"
                                                     CornerRadius="4"
@@ -137,9 +141,12 @@
                                 </ItemsControl>
 
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Border Padding="8,3"
-                                            CornerRadius="10"
-                                            Background="{DynamicResource SystemAccentColorDark1}">
+                                    <Border Padding="8,3" CornerRadius="10">
+                                        <Border.Background>
+                                            <!-- SystemAccentColorDark1 is exposed as a Color, not a Brush;
+                                                 wrap it so Avalonia can paint with it. -->
+                                            <SolidColorBrush Color="{DynamicResource SystemAccentColorDark1}" />
+                                        </Border.Background>
                                         <TextBlock Text="{Binding Category}" FontSize="12" />
                                     </Border>
                                     <Border Padding="8,3"

@@ -267,13 +267,25 @@ public sealed class RefreshService : IRefreshService
                     bucketBusy = false;
                     break;
                 case 3:
-                case 4:
+                    // Token not found - request a fresh one and retry the bucket.
                     if ((apiCallsSoFar + callsConsumed) >= MaxApiCallsPerSession)
                     {
                         bucketBusy = false;
                         break;
                     }
                     token = await _client.RequestTokenAsync(cancellationToken).ConfigureAwait(false);
+                    callsConsumed++;
+                    break;
+                case 4:
+                    // Token exhausted for this query - reset the existing
+                    // token (clears its "already seen" list) rather than
+                    // creating a new session from scratch.
+                    if ((apiCallsSoFar + callsConsumed) >= MaxApiCallsPerSession)
+                    {
+                        bucketBusy = false;
+                        break;
+                    }
+                    await _client.ResetTokenAsync(token, cancellationToken).ConfigureAwait(false);
                     callsConsumed++;
                     break;
                 default:
@@ -312,8 +324,11 @@ public sealed class RefreshService : IRefreshService
         {
             await _repository.SaveAsync(CancellationToken.None).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException)
         {
+            // Narrow catch: only swallow expected I/O / serialization failures.
+            // Anything else (e.g. a bug in our own state) should bubble out
+            // rather than disappear during cleanup.
             _logger.LogError(ex, "Failed to save partial cache during cancellation cleanup");
         }
     }

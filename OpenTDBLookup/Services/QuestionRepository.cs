@@ -19,6 +19,12 @@ namespace OpenTDBLookup.Services;
 public sealed class QuestionRepository : IQuestionRepository
 {
     private const int CurrentSchemaVersion = 1;
+
+    // Bounded so a corrupt or hostile questions.json cannot allocate gigabytes
+    // before the parser gives up. The full OpenTDB corpus serializes to a few
+    // megabytes; 200 MB is generous enough to never bite a real cache.
+    private const long MaxStoreFileBytes = 200L * 1024 * 1024;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -74,6 +80,14 @@ public sealed class QuestionRepository : IQuestionRepository
 
         try
         {
+            var fileLength = new FileInfo(_filePath).Length;
+            if (fileLength > MaxStoreFileBytes)
+            {
+                _logger.LogError("questions.json is {Bytes} bytes (limit {Limit}); refusing to load", fileLength, MaxStoreFileBytes);
+                ResetState();
+                return;
+            }
+
             await using var stream = File.OpenRead(_filePath);
             var loaded = await JsonSerializer.DeserializeAsync<QuestionStoreFile>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
             if (loaded is null)
@@ -112,14 +126,28 @@ public sealed class QuestionRepository : IQuestionRepository
             Directory.CreateDirectory(directory);
         }
 
-        await using (var stream = File.Create(_tempPath))
+        try
         {
-            await JsonSerializer.SerializeAsync(stream, snapshot, JsonOptions, cancellationToken).ConfigureAwait(false);
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-        }
+            await using (var stream = File.Create(_tempPath))
+            {
+                await JsonSerializer.SerializeAsync(stream, snapshot, JsonOptions, cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
 
-        File.Move(_tempPath, _filePath, overwrite: true);
-        _logger.LogDebug("Saved {Count} questions to {Path}", snapshot.Questions.Count, _filePath);
+            File.Move(_tempPath, _filePath, overwrite: true);
+            _logger.LogDebug("Saved {Count} questions to {Path}", snapshot.Questions.Count, _filePath);
+        }
+        finally
+        {
+            // Best-effort cleanup: if File.Move raised (e.g. cross-volume move
+            // on a non-default install) we still want the half-written .tmp
+            // gone so a subsequent Save sees a clean slate.
+            if (File.Exists(_tempPath))
+            {
+                try { File.Delete(_tempPath); }
+                catch (IOException ioex) { _logger.LogWarning(ioex, "Failed to delete leftover temp file {Path}", _tempPath); }
+            }
+        }
     }
 
     public int Merge(IEnumerable<Question> incoming)

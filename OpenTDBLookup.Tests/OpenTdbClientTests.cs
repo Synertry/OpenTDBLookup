@@ -98,15 +98,20 @@ public sealed class OpenTdbClientTests
         handler.When(BaseUrl + "api_category.php")
             .Respond("application/json", """{"trivia_categories":[{"id":1,"name":"X"}]}""");
 
-        var client = ClientFor(handler, TimeSpan.FromMilliseconds(150));
+        // Use a longer interval and assert against half of it so the test is
+        // robust on slow CI runners; the gate fires on a Stopwatch whose
+        // baseline is taken before the first request returns, so any interval
+        // shorter than ~100ms is hard to assert against without flakiness.
+        const int IntervalMs = 400;
+        var client = ClientFor(handler, TimeSpan.FromMilliseconds(IntervalMs));
 
         await client.GetCategoriesAsync(CancellationToken.None);
         var sw = Stopwatch.StartNew();
         await client.GetCategoriesAsync(CancellationToken.None);
         sw.Stop();
 
-        sw.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(120),
-            "the second request must wait for the configured interval since the first");
+        sw.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(IntervalMs / 2),
+            "the second request must wait for at least half of the configured interval since the first");
     }
 
     [Fact]

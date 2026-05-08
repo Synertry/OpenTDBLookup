@@ -89,9 +89,15 @@ try {
 }
 finally {
     if ($tempPfx -and (Test-Path $tempPfx)) {
-        Remove-Item $tempPfx -Force -ErrorAction SilentlyContinue
+        try {
+            Remove-Item $tempPfx -Force
+        } catch {
+            Write-Warning "Failed to delete temp PFX at ${tempPfx}: $_"
+        }
     }
-    # Belt-and-braces: clear the password from env in this process so a later
-    # 'env' dump or hung shell session does not leak it.
+    # Clear both the script parameter and the environment variable so a later
+    # 'env' dump, child process, or hung shell session does not leak the
+    # password. Remove-Variable only clears the local script binding.
     Remove-Variable -Name 'PfxPassword' -ErrorAction SilentlyContinue
+    $env:OPENTDB_CODESIGN_PASSWORD = $null
 }

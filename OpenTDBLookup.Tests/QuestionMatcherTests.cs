@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
@@ -8,11 +9,28 @@ using OpenTDBLookup.Services;
 
 namespace OpenTDBLookup.Tests;
 
-public sealed class QuestionMatcherTests
+public sealed class QuestionMatcherTests : IDisposable
 {
-    private static (QuestionRepository repo, QuestionMatcher matcher) BuildRepoWith(params (string text, string answer)[] questions)
+    private readonly List<string> _tempPaths = [];
+
+    public void Dispose()
     {
-        var repo = new QuestionRepository(NullLogger<QuestionRepository>.Instance, Path.Combine(Path.GetTempPath(), $"qmt-{System.Guid.NewGuid():N}.json"));
+        // Clean up the per-test temp JSON files we asked the repository to
+        // write. SaveAsync is never called by these tests, but the
+        // repository would create the path the moment it did - keeping the
+        // dispose for symmetry and future-proofing.
+        foreach (var path in _tempPaths)
+        {
+            try { if (File.Exists(path)) { File.Delete(path); } }
+            catch (IOException) { /* best-effort */ }
+        }
+    }
+
+    private (QuestionRepository repo, QuestionMatcher matcher) BuildRepoWith(params (string text, string answer)[] questions)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"qmt-{Guid.NewGuid():N}.json");
+        _tempPaths.Add(path);
+        var repo = new QuestionRepository(NullLogger<QuestionRepository>.Instance, path);
         var batch = new List<Question>();
         foreach (var (text, answer) in questions)
         {

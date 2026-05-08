@@ -116,7 +116,13 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>True while the initial scrape is showing the modal dialog.</summary>
     public bool IsInitialScrapeRunning { get; private set; }
 
-    public CancellationTokenSource? ActiveScrapeCts { get; private set; }
+    private CancellationTokenSource? _activeScrapeCts;
+
+    /// <summary>
+    /// Cancels the in-progress initial scrape, if any. Safe to call when no
+    /// scrape is running. Used by the dialog Cancel button and the tray menu.
+    /// </summary>
+    public void CancelActiveScrape() => _activeScrapeCts?.Cancel();
 
     /// <summary>
     /// Loads the cache, kicks off the initial scrape modal if empty, otherwise
@@ -297,13 +303,14 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private async Task RunInitialScrapeAsync(CancellationToken cancellationToken)
     {
         var scrapeVm = new ScrapeProgressViewModel { ApiCallsCeiling = 250, CanCancel = true };
-        ActiveScrapeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _activeScrapeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        scrapeVm.CancelRequested = CancelActiveScrape;
         IsInitialScrapeRunning = true;
         InitialScrapeRequested?.Invoke(this, scrapeVm);
         try
         {
             IsRefreshing = true;
-            var result = await _refresh.InitialScrapeAsync(scrapeVm, ActiveScrapeCts.Token).ConfigureAwait(true);
+            var result = await _refresh.InitialScrapeAsync(scrapeVm, _activeScrapeCts.Token).ConfigureAwait(true);
             StatusMessage = result.HitCeiling
                 ? $"Partial scrape: {result.QuestionsAdded} added, ceiling reached"
                 : $"Loaded {result.QuestionsAdded} questions in {result.Duration.TotalSeconds:F1}s";
@@ -323,8 +330,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             IsInitialScrapeRunning = false;
             UpdateRepoStats();
             InitialScrapeCompleted?.Invoke(this, EventArgs.Empty);
-            ActiveScrapeCts?.Dispose();
-            ActiveScrapeCts = null;
+            _activeScrapeCts?.Dispose();
+            _activeScrapeCts = null;
         }
     }
 
@@ -398,8 +405,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _watcher.Stop();
         _searchCts?.Cancel();
         _searchCts?.Dispose();
-        ActiveScrapeCts?.Cancel();
-        ActiveScrapeCts?.Dispose();
+        _activeScrapeCts?.Cancel();
+        _activeScrapeCts?.Dispose();
     }
 
     // ---------------------------------------------------------------------

@@ -1,5 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using OpenTDBLookup.Services;
 
 namespace OpenTDBLookup.ViewModels;
@@ -10,6 +11,14 @@ namespace OpenTDBLookup.ViewModels;
 /// </summary>
 public partial class ScrapeProgressViewModel : ViewModelBase, IProgress<ScrapeProgress>
 {
+    /// <summary>
+    /// Set by the parent VM to a delegate that cancels the active scrape.
+    /// The Cancel button in the dialog binds to <see cref="CancelCommand"/>
+    /// which invokes this hook; if no parent has wired it, the command is a
+    /// no-op so the button is harmless if accidentally clicked.
+    /// </summary>
+    public Action? CancelRequested { get; set; }
+
     // CommunityToolkit.Mvvm's [ObservableProperty] generator turns a private
     // backing field into a public property with INotifyPropertyChanged
     // notifications. The class must be `partial` for the generator to inject
@@ -43,5 +52,12 @@ public partial class ScrapeProgressViewModel : ViewModelBase, IProgress<ScrapePr
         ApiCallsCeiling = value.ApiCallsCeiling;
         QuestionsAdded = value.QuestionsAdded;
         PercentComplete = value.PercentComplete;
+    }
+
+    [RelayCommand]
+    private void Cancel()
+    {
+        CanCancel = false;
+        CancelRequested?.Invoke();
     }
 }

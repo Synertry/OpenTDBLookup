@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,7 +11,7 @@ namespace OpenTDBLookup.Services;
 /// for enforcing the documented 5-second between-request rate limit and for
 /// transparent HTTP-level retries on transient failures.
 /// </summary>
-public interface IOpenTdbClient
+public interface IOpenTdbClient : IDisposable
 {
     /// <summary>List every category exposed by <c>api_category.php</c>.</summary>
     Task<IReadOnlyList<OpenTdbCategoryItem>> GetCategoriesAsync(CancellationToken cancellationToken);

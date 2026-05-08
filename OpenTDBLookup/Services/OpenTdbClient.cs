@@ -19,8 +19,9 @@ namespace OpenTDBLookup.Services;
 /// across every endpoint and applies a small exponential-backoff retry for
 /// transient HTTP failures.
 /// </summary>
-public sealed class OpenTdbClient : IOpenTdbClient
+public sealed partial class OpenTdbClient : IOpenTdbClient
 {
+    private bool _disposed;
     private const string BaseUrl = "https://opentdb.com/";
     private static readonly TimeSpan DefaultMinimumInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan RateLimitBackoff = TimeSpan.FromSeconds(10);
@@ -97,11 +98,20 @@ public sealed class OpenTdbClient : IOpenTdbClient
         }
     }
 
-    public async Task<(int responseCode, IReadOnlyList<OpenTdbQuestionResult> results)> FetchQuestionsAsync(
+    public Task<(int responseCode, IReadOnlyList<OpenTdbQuestionResult> results)> FetchQuestionsAsync(
         int amount,
         int? categoryId,
         string? difficulty,
         string? token,
+        CancellationToken cancellationToken) =>
+        FetchQuestionsCoreAsync(amount, categoryId, difficulty, token, allowRateLimitRetry: true, cancellationToken);
+
+    private async Task<(int responseCode, IReadOnlyList<OpenTdbQuestionResult> results)> FetchQuestionsCoreAsync(
+        int amount,
+        int? categoryId,
+        string? difficulty,
+        string? token,
+        bool allowRateLimitRetry,
         CancellationToken cancellationToken)
     {
         var query = new StringBuilder("api.php?amount=");
@@ -121,19 +131,28 @@ public sealed class OpenTdbClient : IOpenTdbClient
         }
 
         var response = await GetJsonAsync<OpenTdbQuestionsResponse>(query.ToString(), cancellationToken).ConfigureAwait(false);
+
+        if (response.ResponseCode == 5)
+        {
+            // Defensive: the 5-second gate should make this impossible, but if
+            // OpenTDB ever returns code 5 we wait and retry exactly once. A
+            // sustained rate-limit response will surface as code 5 to the
+            // caller and the orchestration layer will log + skip the bucket.
+            if (!allowRateLimitRetry)
+            {
+                _logger.LogWarning("OpenTDB still returning response_code 5 after backoff; surfacing to caller");
+                return (5, []);
+            }
+            _logger.LogWarning("OpenTDB returned response_code 5 (rate limit) - waiting {Backoff}s and retrying once", RateLimitBackoff.TotalSeconds);
+            await Task.Delay(RateLimitBackoff, cancellationToken).ConfigureAwait(false);
+            return await FetchQuestionsCoreAsync(amount, categoryId, difficulty, token, allowRateLimitRetry: false, cancellationToken).ConfigureAwait(false);
+        }
+
         var decoded = new List<OpenTdbQuestionResult>(response.Results.Count);
         foreach (var raw in response.Results)
         {
             decoded.Add(DecodeQuestion(raw));
         }
-
-        if (response.ResponseCode == 5)
-        {
-            _logger.LogWarning("OpenTDB returned response_code 5 (rate limit) - waiting {Backoff}s and retrying once", RateLimitBackoff.TotalSeconds);
-            await Task.Delay(RateLimitBackoff, cancellationToken).ConfigureAwait(false);
-            return await FetchQuestionsAsync(amount, categoryId, difficulty, token, cancellationToken).ConfigureAwait(false);
-        }
-
         return (response.ResponseCode, decoded);
     }
 
@@ -191,7 +210,7 @@ public sealed class OpenTdbClient : IOpenTdbClient
                 response.EnsureSuccessStatusCode();
                 var payload = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken).ConfigureAwait(false)
                     ?? throw new InvalidOperationException($"Empty JSON response from {relativePath}");
-                _logger.LogDebug("OpenTDB GET {Path} -> {Status}", relativePath, (int)response.StatusCode);
+                _logger.LogDebug("OpenTDB GET {Path} -> {Status}", RedactToken(relativePath), (int)response.StatusCode);
                 return payload;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -206,7 +225,7 @@ public sealed class OpenTdbClient : IOpenTdbClient
                     break;
                 }
                 var delay = TimeSpan.FromMilliseconds(RetryDelaysMs[attempt]);
-                _logger.LogWarning(ex, "OpenTDB GET {Path} failed (attempt {Attempt}/{Max}); retrying in {Delay}ms", relativePath, attempt + 1, RetryDelaysMs.Length, delay.TotalMilliseconds);
+                _logger.LogWarning(ex, "OpenTDB GET {Path} failed (attempt {Attempt}/{Max}); retrying in {Delay}ms", RedactToken(relativePath), attempt + 1, RetryDelaysMs.Length, delay.TotalMilliseconds);
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                 await EnforceRateLimitAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -214,6 +233,15 @@ public sealed class OpenTdbClient : IOpenTdbClient
 
         throw new HttpRequestException($"OpenTDB GET {relativePath} failed after {RetryDelaysMs.Length + 1} attempts", lastError);
     }
+
+    private static string RedactToken(string relativePath) =>
+        // Session tokens identify a user's view into OpenTDB and showing them
+        // in any persisted log is unnecessary leakage. Strip the value but
+        // preserve the parameter so log readers see that a token was used.
+        TokenQueryRegex().Replace(relativePath, "token=***");
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"token=[^&]*", System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled)]
+    private static partial System.Text.RegularExpressions.Regex TokenQueryRegex();
 
     private async Task EnforceRateLimitAsync(CancellationToken cancellationToken)
     {
@@ -239,5 +267,12 @@ public sealed class OpenTdbClient : IOpenTdbClient
         {
             _gate.Release();
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) { return; }
+        _disposed = true;
+        _gate.Dispose();
     }
 }

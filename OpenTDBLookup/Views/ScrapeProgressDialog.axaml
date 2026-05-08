@@ -32,5 +32,9 @@
             <Run Text="Questions added: " />
             <Run Text="{Binding QuestionsAdded}" />
         </TextBlock>
+        <Button Content="Cancel"
+                HorizontalAlignment="Right"
+                Command="{Binding CancelCommand}"
+                IsVisible="{Binding CanCancel}" />
     </StackPanel>
 </UserControl>
