@@ -22,7 +22,7 @@ namespace OpenTDBLookup.Services;
 public sealed class OpenTdbClient : IOpenTdbClient
 {
     private const string BaseUrl = "https://opentdb.com/";
-    private static readonly TimeSpan MinimumInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DefaultMinimumInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan RateLimitBackoff = TimeSpan.FromSeconds(10);
     private static readonly int[] RetryDelaysMs = [1000, 2000, 4000];
 
@@ -34,14 +34,25 @@ public sealed class OpenTdbClient : IOpenTdbClient
 
     private readonly HttpClient _httpClient;
     private readonly ILogger<OpenTdbClient> _logger;
+    private readonly TimeSpan _minimumInterval;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Stopwatch _sinceLastRequest = Stopwatch.StartNew();
     private bool _firstRequest = true;
 
     public OpenTdbClient(HttpClient httpClient, ILogger<OpenTdbClient> logger)
+        : this(httpClient, logger, DefaultMinimumInterval)
+    {
+    }
+
+    /// <summary>
+    /// Test-only constructor that overrides the rate-limit interval. Production
+    /// code uses the public ctor which keeps the documented 5-second gate.
+    /// </summary>
+    internal OpenTdbClient(HttpClient httpClient, ILogger<OpenTdbClient> logger, TimeSpan minimumInterval)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _minimumInterval = minimumInterval;
         _httpClient.BaseAddress ??= new Uri(BaseUrl);
         _httpClient.Timeout = TimeSpan.FromSeconds(30);
     }
@@ -217,9 +228,9 @@ public sealed class OpenTdbClient : IOpenTdbClient
             }
 
             var elapsed = _sinceLastRequest.Elapsed;
-            if (elapsed < MinimumInterval)
+            if (elapsed < _minimumInterval)
             {
-                var wait = MinimumInterval - elapsed;
+                var wait = _minimumInterval - elapsed;
                 await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
             }
             _sinceLastRequest.Restart();
