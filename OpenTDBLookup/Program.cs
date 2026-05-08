@@ -1,24 +1,65 @@
-﻿using Avalonia;
 using System;
+using System.IO;
+using Avalonia;
+using Serilog;
+using Serilog.Events;
 
 namespace OpenTDBLookup;
 
-sealed class Program
+internal static class Program
 {
-    // Initialization code. Don't use any Avalonia, third-party APIs or any
-    // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
-    // yet and stuff might break.
-    [STAThread]
-    public static void Main(string[] args) => BuildAvaloniaApp()
-        .StartWithClassicDesktopLifetime(args);
+    /// <summary>Resolved at startup; <see cref="App"/> reads it to attach Serilog to the logging pipeline.</summary>
+    public static ILogger? RootLogger { get; private set; }
 
-    // Avalonia configuration, don't remove; also used by visual designer.
-    public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
+    [STAThread]
+    public static int Main(string[] args)
+    {
+        ConfigureSerilog();
+
+        try
+        {
+            Log.Information("OpenTDBLookup starting up");
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            Log.Information("OpenTDBLookup exited cleanly");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Fatal(ex, "Unhandled exception during startup");
+            return 1;
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+        }
+    }
+
+    public static AppBuilder BuildAvaloniaApp() =>
+        AppBuilder.Configure<App>()
             .UsePlatformDetect()
 #if DEBUG
             .WithDeveloperTools()
 #endif
             .WithInterFont()
             .LogToTrace();
+
+    private static void ConfigureSerilog()
+    {
+        var logsDir = Path.Combine(AppContext.BaseDirectory, "logs");
+        Directory.CreateDirectory(logsDir);
+
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .Enrich.WithProperty("Application", "OpenTDBLookup")
+            .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Information)
+            .WriteTo.File(
+                Path.Combine(logsDir, "opentdb-.log"),
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 7,
+                restrictedToMinimumLevel: LogEventLevel.Debug,
+                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}")
+            .CreateLogger();
+
+        RootLogger = Log.Logger;
+    }
 }

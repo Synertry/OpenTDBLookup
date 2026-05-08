@@ -1,20 +1,199 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:OpenTDBLookup.ViewModels"
+        xmlns:m="using:OpenTDBLookup.Models"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        xmlns:sys="using:System"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="650"
         x:Class="OpenTDBLookup.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="OpenTDBLookup">
+        Icon="/Assets/tray-icon.ico"
+        Title="OpenTDBLookup"
+        Width="900" Height="650"
+        MinWidth="600" MinHeight="400"
+        RequestedThemeVariant="Dark">
 
     <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainWindowViewModel/>
+        <vm:MainWindowViewModel />
     </Design.DataContext>
 
-    <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    <!-- Compiled bindings (AvaloniaUseCompiledBindingsByDefault=true in csproj)
+         require x:DataType on every binding scope. The Window declares it once;
+         DataTemplates below redeclare for their bound type. -->
 
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+Enter" Command="{Binding CopyAnswerToClipboardCommand}" />
+        <KeyBinding Gesture="Ctrl+R" Command="{Binding RefreshCommand}" />
+        <KeyBinding Gesture="Escape"  Command="{Binding ClearSearchCommand}" />
+    </Window.KeyBindings>
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="16">
+
+        <!-- ROW 0: input + status + refresh -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" RowDefinitions="Auto" Margin="0,0,0,12">
+            <TextBox Grid.Column="0"
+                     x:Name="InputBox"
+                     Text="{Binding PastedText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="False"
+                     TextWrapping="Wrap"
+                     PlaceholderText="Paste a trivia question..."
+                     Height="80"
+                     FontSize="14"
+                     VerticalContentAlignment="Top"
+                     Padding="10" />
+
+            <StackPanel Grid.Column="1"
+                        Orientation="Vertical"
+                        Margin="12,0,0,0"
+                        Width="220"
+                        Spacing="4">
+                <TextBlock FontSize="13" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
+                    <Run Text="{Binding TotalQuestions}" />
+                    <Run Text=" questions loaded" />
+                </TextBlock>
+                <TextBlock FontSize="12"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           Text="{Binding LastRefresh, StringFormat='Last refresh: {0:yyyy-MM-dd HH:mm}'}"
+                           IsVisible="{Binding LastRefresh, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                <Button Content="Refresh now"
+                        Command="{Binding RefreshCommand}"
+                        IsEnabled="{Binding !IsRefreshing}"
+                        HorizontalAlignment="Stretch" />
+                <ProgressBar Minimum="0" Maximum="100"
+                             Value="{Binding ProgressValue}"
+                             IsVisible="{Binding IsRefreshing}"
+                             Height="4" />
+                <TextBlock FontSize="11"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                           Text="{Binding ProgressLabel}"
+                           IsVisible="{Binding IsRefreshing}" />
+                <TextBlock FontSize="11"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                           Text="{Binding StatusMessage}"
+                           IsVisible="{Binding StatusMessage, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </StackPanel>
+        </Grid>
+
+        <!-- ROW 1: result -->
+        <Grid Grid.Row="1">
+
+            <!-- Empty-state placeholder (visible when no match yet) -->
+            <TextBlock HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Opacity="0.45"
+                       Text="Paste or type a question above"
+                       IsVisible="{Binding CurrentMatch, Converter={x:Static ObjectConverters.IsNull}}" />
+
+            <!-- Matched-question template -->
+            <ContentControl Content="{Binding CurrentMatch}"
+                            IsVisible="{Binding CurrentMatch, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <ContentControl.DataTemplates>
+                    <DataTemplate DataType="m:Question">
+                        <Border Padding="16"
+                                CornerRadius="8"
+                                Background="{DynamicResource SystemControlPageBackgroundChromeMediumBrush}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="{Binding QuestionText}"
+                                           FontSize="18"
+                                           TextWrapping="Wrap" />
+
+                                <Border Padding="12"
+                                        CornerRadius="6"
+                                        Background="#1F2EA561"
+                                        BorderBrush="#3D2EA561"
+                                        BorderThickness="1">
+                                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding CorrectAnswer}"
+                                                   FontSize="24"
+                                                   FontWeight="Bold"
+                                                   TextWrapping="Wrap"
+                                                   VerticalAlignment="Center" />
+                                        <Button Grid.Column="1"
+                                                Margin="12,0,0,0"
+                                                Content="Copy"
+                                                VerticalAlignment="Center"
+                                                Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).CopyAnswerToClipboardCommand}" />
+                                    </Grid>
+                                </Border>
+
+                                <ItemsControl ItemsSource="{Binding IncorrectAnswers}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="sys:String">
+                                            <Border Padding="8,4"
+                                                    Margin="0,0,0,4"
+                                                    CornerRadius="4"
+                                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+                                                <TextBlock Text="{Binding}"
+                                                           Opacity="0.7"
+                                                           TextWrapping="Wrap" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Padding="8,3"
+                                            CornerRadius="10"
+                                            Background="{DynamicResource SystemAccentColorDark1}">
+                                        <TextBlock Text="{Binding Category}" FontSize="12" />
+                                    </Border>
+                                    <Border Padding="8,3"
+                                            CornerRadius="10"
+                                            Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+                                        <TextBlock Text="{Binding Difficulty}" FontSize="12" />
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ContentControl.DataTemplates>
+            </ContentControl>
+
+            <!-- No-match panel -->
+            <Border IsVisible="{Binding ShowNoMatch}"
+                    VerticalAlignment="Top"
+                    Padding="16"
+                    CornerRadius="8"
+                    Background="#1FE94F4F"
+                    BorderBrush="#3DE94F4F"
+                    BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="No match found" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock FontSize="11" Opacity="0.7" Text="Searched (normalized):" />
+                    <TextBlock FontSize="12"
+                               TextWrapping="Wrap"
+                               FontFamily="Consolas, monospace"
+                               Text="{Binding NormalizedSearchPreview}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ROW 2: settings strip -->
+        <Grid Grid.Row="2"
+              ColumnDefinitions="Auto,Auto,*"
+              Margin="0,12,0,0">
+            <ToggleSwitch Grid.Column="0"
+                          OnContent="Watch clipboard"
+                          OffContent="Watch clipboard"
+                          IsChecked="{Binding IsClipboardWatchEnabled, Mode=TwoWay}" />
+            <ToggleSwitch Grid.Column="1"
+                          Margin="24,0,0,0"
+                          OnContent="Minimize to tray"
+                          OffContent="Minimize to tray"
+                          IsChecked="{Binding IsTrayEnabled, Mode=TwoWay}" />
+            <TextBlock Grid.Column="2"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center"
+                       FontSize="11"
+                       Opacity="0.5">
+                <Run Text="v" />
+                <Run Text="{Binding AppVersion}" />
+            </TextBlock>
+        </Grid>
+    </Grid>
 </Window>

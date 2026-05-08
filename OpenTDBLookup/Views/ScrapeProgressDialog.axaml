@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OpenTDBLookup.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="220"
+             x:Class="OpenTDBLookup.Views.ScrapeProgressDialog"
+             x:DataType="vm:ScrapeProgressViewModel"
+             Width="420">
+    <Design.DataContext>
+        <vm:ScrapeProgressViewModel />
+    </Design.DataContext>
+
+    <StackPanel Spacing="10" Margin="0,4,0,4">
+        <ProgressBar Minimum="0" Maximum="100"
+                     Value="{Binding PercentComplete}"
+                     Height="6" />
+        <TextBlock FontSize="13">
+            <Run Text="Currently scraping:" />
+            <Run Text="{Binding CurrentCategory}" FontWeight="SemiBold" />
+            <Run Text=" (" />
+            <Run Text="{Binding CurrentDifficulty}" />
+            <Run Text=")" />
+        </TextBlock>
+        <TextBlock FontSize="12" Opacity="0.75">
+            <Run Text="API calls: " />
+            <Run Text="{Binding ApiCallsMade}" />
+            <Run Text=" / " />
+            <Run Text="{Binding ApiCallsCeiling}" />
+        </TextBlock>
+        <TextBlock FontSize="12" Opacity="0.75">
+            <Run Text="Questions added: " />
+            <Run Text="{Binding QuestionsAdded}" />
+        </TextBlock>
+    </StackPanel>
+</UserControl>

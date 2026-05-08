@@ -67,6 +67,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private string _normalizedSearchPreview = string.Empty;
 
     [ObservableProperty]
+    private bool _showNoMatch;
+
+    [ObservableProperty]
     private string _appVersion = "0.1.0";
 
     public MainWindowViewModel(
@@ -184,6 +187,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                     if (token.IsCancellationRequested) { return; }
                     CurrentMatch = match;
                     NormalizedSearchPreview = preview;
+                    ShowNoMatch = match is null && !string.IsNullOrWhiteSpace(value);
                     StatusMessage = match is null
                         ? (string.IsNullOrWhiteSpace(value) ? null : "No match found")
                         : $"Matched in {match.Category} ({match.Difficulty})";
@@ -267,6 +271,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         CurrentMatch = null;
         StatusMessage = null;
         NormalizedSearchPreview = string.Empty;
+        ShowNoMatch = false;
     }
 
     [RelayCommand]
