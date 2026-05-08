@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="OpenTDBLookup.Tests/OpenTDBLookup.Tests.csproj" />
+  <Project Path="OpenTDBLookup/OpenTDBLookup.csproj" />
+</Solution>

@@ -1,0 +1,66 @@
+# --- Build output ---
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+publish/
+
+# --- Visual Studio / Rider / VS Code ---
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userprefs
+*.lock.json
+*.cache
+*.swp
+
+# --- ReSharper / Resharper ---
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# --- TestResults / coverage ---
+[Tt]est[Rr]esult*/
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+*.lcov
+
+# --- NuGet ---
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# --- App-specific runtime data (NEVER commit user-generated cache) ---
+questions.json
+questions.json.tmp
+settings.json
+
+# --- OS junk ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- Misc ---
+*.log
+*.pid
+*.tmp
+*.bak
+*.orig
+
+# --- Code-signing material (must never be checked in) ---
+*.pfx
+*.p12
+*.snk
