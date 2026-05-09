@@ -19,6 +19,13 @@ public interface IOpenTdbClient : IDisposable
     /// <summary>Returns a category-id-to-verified-question-count map sourced from <c>api_count_global.php</c>.</summary>
     Task<IReadOnlyDictionary<int, int>> GetVerifiedCountsAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Returns per-difficulty verified counts for a single category from
+    /// <c>api_count.php?category=X</c>. The three values sum to the verified
+    /// total reported by <c>api_count_global.php</c>.
+    /// </summary>
+    Task<CategoryDifficultyTotals> GetCategoryDifficultyTotalsAsync(int categoryId, CancellationToken cancellationToken);
+
     /// <summary>Requests a fresh session token from <c>api_token.php</c>.</summary>
     Task<string> RequestTokenAsync(CancellationToken cancellationToken);
 

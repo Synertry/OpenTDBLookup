@@ -136,4 +136,31 @@ public sealed class OpenTdbClientTests
         counts[9].Should().Be(280);
         counts[10].Should().Be(190);
     }
+
+    [Fact]
+    public async Task GetCategoryDifficultyTotalsAsync_returns_per_difficulty_counts()
+    {
+        var handler = new MockHttpMessageHandler();
+        handler.When(BaseUrl + "api_count.php*")
+            .Respond("application/json", """
+                {
+                  "category_id": 13,
+                  "category_question_count": {
+                    "total_question_count": 35,
+                    "total_easy_question_count": 10,
+                    "total_medium_question_count": 14,
+                    "total_hard_question_count": 11
+                  }
+                }
+                """);
+
+        var client = ClientFor(handler);
+
+        var totals = await client.GetCategoryDifficultyTotalsAsync(13, CancellationToken.None);
+
+        totals.Easy.Should().Be(10);
+        totals.Medium.Should().Be(14);
+        totals.Hard.Should().Be(11);
+        totals.Total.Should().Be(35);
+    }
 }

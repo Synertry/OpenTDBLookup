@@ -78,6 +78,17 @@ public sealed partial class OpenTdbClient : IOpenTdbClient
         return result;
     }
 
+    public async Task<CategoryDifficultyTotals> GetCategoryDifficultyTotalsAsync(int categoryId, CancellationToken cancellationToken)
+    {
+        var path = "api_count.php?category=" + categoryId.ToString(CultureInfo.InvariantCulture);
+        var response = await GetJsonAsync<OpenTdbCategoryCountResponse>(path, cancellationToken).ConfigureAwait(false);
+        var c = response.CategoryQuestionCount;
+        return new CategoryDifficultyTotals(
+            c.TotalEasyQuestionCount,
+            c.TotalMediumQuestionCount,
+            c.TotalHardQuestionCount);
+    }
+
     public async Task<string> RequestTokenAsync(CancellationToken cancellationToken)
     {
         var response = await GetJsonAsync<OpenTdbTokenResponse>("api_token.php?command=request", cancellationToken).ConfigureAwait(false);

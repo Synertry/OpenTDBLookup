@@ -41,6 +41,18 @@ public sealed record OpenTdbCategoryCountResponse(
     [property: JsonPropertyName("category_id")] int CategoryId,
     [property: JsonPropertyName("category_question_count")] OpenTdbCategoryQuestionCount CategoryQuestionCount);
 
+/// <summary>
+/// Per-difficulty verified counts for a single category. Sums to the
+/// category's <c>total_num_of_verified_questions</c> from
+/// <c>api_count_global.php</c>. Used by <see cref="Services.IRefreshService"/>
+/// to size each <c>api.php</c> request so we do not hit response_code 1
+/// when the bucket has fewer than 50 verified questions.
+/// </summary>
+public sealed record CategoryDifficultyTotals(int Easy, int Medium, int Hard)
+{
+    public int Total => Easy + Medium + Hard;
+}
+
 /// <summary>One question in the response from <c>api.php</c>; all string fields are base64-encoded.</summary>
 public sealed record OpenTdbQuestionResult(
     string Category,

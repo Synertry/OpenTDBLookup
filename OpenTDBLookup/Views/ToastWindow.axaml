@@ -1,0 +1,31 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OpenTDBLookup.Views.ToastWindow"
+        Width="360" Height="92"
+        WindowDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        CanResize="False"
+        WindowStartupLocation="Manual"
+        Focusable="False"
+        Background="#1F1F1F"
+        RequestedThemeVariant="Dark">
+    <Border Padding="16,12"
+            BorderBrush="#3F3F3F"
+            BorderThickness="1">
+        <StackPanel Spacing="4">
+            <TextBlock x:Name="TitleText"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Foreground="#FFFFFF"
+                       TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="BodyText"
+                       FontSize="12"
+                       Foreground="#DDDDDD"
+                       TextWrapping="Wrap"
+                       MaxLines="3"
+                       TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+    </Border>
+</Window>

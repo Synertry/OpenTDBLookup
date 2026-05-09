@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,11 +28,17 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly IQuestionMatcher _matcher;
     private readonly IRefreshService _refresh;
     private readonly IClipboardWatcher _watcher;
+    private readonly IToastService _toast;
+    private readonly ISettingsService _settings;
     private readonly ILogger<MainWindowViewModel> _logger;
 
     private CancellationTokenSource? _searchCts;
     private string _lastClipboardWriteByApp = string.Empty;
     private bool _disposed;
+    // Suppresses persistence during the initial settings application so the
+    // OnXxxxChanged partial methods do not write the same state back to disk
+    // immediately after we load it.
+    private bool _suppressSettingsSave;
 
     [ObservableProperty]
     private string _pastedText = string.Empty;
@@ -46,6 +53,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private bool _isClipboardWatchEnabled;
 
     [ObservableProperty]
+    private bool _isToastNotificationsEnabled;
+
+    [ObservableProperty]
     private bool _isTrayEnabled;
 
     [ObservableProperty]
@@ -53,6 +63,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     private int _totalQuestions;
+
+    [ObservableProperty]
+    private int _totalVerified;
 
     [ObservableProperty]
     private DateTimeOffset? _lastRefresh;
@@ -77,12 +90,16 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         IQuestionMatcher matcher,
         IRefreshService refresh,
         IClipboardWatcher watcher,
+        IToastService toast,
+        ISettingsService settings,
         ILogger<MainWindowViewModel> logger)
     {
         _repository = repository;
         _matcher = matcher;
         _refresh = refresh;
         _watcher = watcher;
+        _toast = toast;
+        _settings = settings;
         _logger = logger;
 
         AppVersion = Assembly.GetExecutingAssembly()
@@ -100,6 +117,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             new DesignTimeMatcher(),
             new DesignTimeRefresh(),
             new DesignTimeWatcher(),
+            new DesignTimeToast(),
+            new DesignTimeSettings(),
             new DesignTimeLogger())
     {
     }
@@ -123,6 +142,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             await _repository.LoadAsync(cancellationToken).ConfigureAwait(true);
             UpdateRepoStats();
 
+            await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
+            ApplyLoadedSettings();
+
             if (_repository.Count == 0)
             {
                 RequiresInitialScrape = true;
@@ -137,6 +159,35 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             _logger.LogError(ex, "Startup initialize failed");
             StatusMessage = $"Startup failed: {ex.Message}";
         }
+    }
+
+    private void ApplyLoadedSettings()
+    {
+        var s = _settings.Current;
+        _suppressSettingsSave = true;
+        try
+        {
+            // Toggling these triggers the partial OnXxxxChanged methods which
+            // would normally persist. The flag tells those handlers we are
+            // applying state from disk, not user action.
+            IsClipboardWatchEnabled = s.ClipboardWatchEnabled;
+            IsToastNotificationsEnabled = s.ToastNotificationsEnabled;
+            IsTrayEnabled = s.TrayEnabled;
+        }
+        finally
+        {
+            _suppressSettingsSave = false;
+        }
+    }
+
+    private void SaveSettings()
+    {
+        if (_suppressSettingsSave) { return; }
+        var snapshot = new AppSettings(
+            IsClipboardWatchEnabled,
+            IsToastNotificationsEnabled,
+            IsTrayEnabled);
+        _ = _settings.SaveAsync(snapshot, CancellationToken.None);
     }
 
     partial void OnPastedTextChanged(string value) =>
@@ -156,7 +207,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             _watcher.Stop();
             StatusMessage = "Clipboard watcher off";
         }
+        SaveSettings();
     }
+
+    partial void OnIsToastNotificationsEnabledChanged(bool value) => SaveSettings();
+
+    partial void OnIsTrayEnabledChanged(bool value) => SaveSettings();
 
     private void ScheduleSearch(string value)
     {
@@ -374,6 +430,16 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
                 PastedText = text;
                 StatusMessage = $"Auto-answered: {match.Category}";
             });
+            // Toast fires after the in-app updates so the toggle reads the
+            // latest value. The user can leave this off and still get
+            // silent clipboard replacement, or turn it on when the main
+            // window is hidden in the tray and they need a visible cue.
+            if (IsToastNotificationsEnabled)
+            {
+                _toast.Show(
+                    "Question detected - answer copied",
+                    $"{match.CorrectAnswer}\n{match.Category} ({match.Difficulty})");
+            }
         }
         catch (Exception ex)
         {
@@ -384,7 +450,19 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private void UpdateRepoStats()
     {
         TotalQuestions = _repository.Count;
-        LastRefresh = _repository.LastCountCheck;
+        // Subtract OpenTDB-side known duplicates from the displayed target so
+        // a "complete" cache reads as X / X. Math.Max keeps the displayed
+        // target above the actual count when a refresh has not yet pulled
+        // newly-added questions - that's the only state where the user
+        // should see a non-zero gap, signalling a refresh is worthwhile.
+        var rawVerified = _repository.CategoryVerifiedCounts.Values.Sum();
+        var effectiveVerified = rawVerified - _repository.KnownDuplicateCount;
+        TotalVerified = Math.Max(TotalQuestions, effectiveVerified);
+        // Storage is UTC (DateTimeOffset.UtcNow on write); display is local
+        // wall-clock so "Last refresh" matches the user's clock. ToLocalTime
+        // shifts the offset and rebases the hh:mm using the current system
+        // timezone, which is what we want for at-a-glance "how stale".
+        LastRefresh = _repository.LastCountCheck?.ToLocalTime();
     }
 
     public void Dispose()
@@ -410,10 +488,14 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         public DateTimeOffset? LastCountCheck => null;
         public System.Collections.Generic.IReadOnlyDictionary<int, int> CategoryVerifiedCounts { get; } = new System.Collections.Generic.Dictionary<int, int>();
         public System.Collections.Generic.IReadOnlyDictionary<string, string> NormalizedQuestionByHash { get; } = new System.Collections.Generic.Dictionary<string, string>();
+        public int KnownDuplicateCount => 0;
+        public System.Collections.Generic.IReadOnlyDictionary<int, int> GetCachedCountsByCategory() => new System.Collections.Generic.Dictionary<int, int>();
+        public System.Collections.Generic.IReadOnlyDictionary<(int CategoryId, string Difficulty), int> GetCachedCountsByCategoryDifficulty() => new System.Collections.Generic.Dictionary<(int, string), int>();
         public Task LoadAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public Task SaveAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public int Merge(System.Collections.Generic.IEnumerable<Question> incoming) => 0;
         public void UpdateCategoryCounts(System.Collections.Generic.IReadOnlyDictionary<int, int> verifiedCounts) { }
+        public void RecordKnownDuplicateCount(int count) { }
         public void MarkFullScrape() { }
         public void MarkCountCheck() { }
     }
@@ -443,6 +525,18 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         public bool IsRunning => false;
         public void Start() { }
         public void Stop() { }
+    }
+
+    private sealed class DesignTimeToast : IToastService
+    {
+        public void Show(string title, string body, TimeSpan? duration = null) { }
+    }
+
+    private sealed class DesignTimeSettings : ISettingsService
+    {
+        public AppSettings Current { get; } = new();
+        public Task LoadAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class DesignTimeLogger : ILogger<MainWindowViewModel>

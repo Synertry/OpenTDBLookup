@@ -85,6 +85,42 @@ public sealed class QuestionRepositoryTests : IDisposable
     }
 
     [Fact]
+    public void Merge_keeps_same_text_under_different_category_or_difficulty()
+    {
+        var repo = NewRepo();
+
+        // Same question text in three different (cat, diff) tuples - OpenTDB
+        // lists each separately and the cache must keep all three so
+        // per-category counts match the API's verified totals.
+        var added = repo.Merge([
+            MakeQuestion("shared", categoryId: 9, difficulty: "easy"),
+            MakeQuestion("shared", categoryId: 9, difficulty: "medium"),
+            MakeQuestion("shared", categoryId: 13, difficulty: "easy"),
+        ]);
+        added.Should().Be(3);
+        repo.Count.Should().Be(3);
+
+        // The fast-path text-hash lookup still resolves (whichever was stored
+        // first wins) - the answer text is identical so the user gets the
+        // right answer regardless of which copy is returned.
+        var hash = HashHelper.ComputeHash(TextNormalizer.Normalize("shared"));
+        repo.ByHash.Should().ContainKey(hash);
+    }
+
+    [Fact]
+    public void Merge_skips_exact_same_text_in_same_category_and_difficulty()
+    {
+        var repo = NewRepo();
+
+        var added = repo.Merge([
+            MakeQuestion("twin", categoryId: 9, difficulty: "easy"),
+            MakeQuestion("twin", categoryId: 9, difficulty: "easy"),
+        ]);
+        added.Should().Be(1);
+        repo.Count.Should().Be(1);
+    }
+
+    [Fact]
     public async Task SaveAsync_cleans_up_temp_file_on_success()
     {
         var repo = NewRepo();
@@ -106,5 +142,24 @@ public sealed class QuestionRepositoryTests : IDisposable
 
         repo.Count.Should().Be(0);
         repo.LastFullScrape.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetCachedCountsByCategoryDifficulty_groups_by_category_and_difficulty()
+    {
+        var repo = NewRepo();
+        repo.Merge([
+            MakeQuestion("a", categoryId: 9, difficulty: "easy"),
+            MakeQuestion("b", categoryId: 9, difficulty: "easy"),
+            MakeQuestion("c", categoryId: 9, difficulty: "medium"),
+            MakeQuestion("d", categoryId: 13, difficulty: "easy"),
+        ]);
+
+        var counts = repo.GetCachedCountsByCategoryDifficulty();
+
+        counts.Should().ContainKey((9, "easy")).WhoseValue.Should().Be(2);
+        counts.Should().ContainKey((9, "medium")).WhoseValue.Should().Be(1);
+        counts.Should().ContainKey((13, "easy")).WhoseValue.Should().Be(1);
+        counts.Should().NotContainKey((13, "medium"));
     }
 }

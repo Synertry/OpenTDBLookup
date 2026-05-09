@@ -80,6 +80,8 @@ public partial class App : Application
         services.AddSingleton<IQuestionMatcher, QuestionMatcher>();
         services.AddSingleton<IClipboardWatcher, ClipboardWatcher>();
         services.AddSingleton<IRefreshService, RefreshService>();
+        services.AddSingleton<IToastService, ToastService>();
+        services.AddSingleton<ISettingsService, SettingsService>();
 
         // ViewModel is transient: a fresh instance per window. Today there is
         // only one window, but transient avoids surprises if the design grows.

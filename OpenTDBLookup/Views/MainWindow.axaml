@@ -48,9 +48,13 @@
                         Margin="12,0,0,0"
                         Width="220"
                         Spacing="4">
-                <TextBlock FontSize="13" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
+                <TextBlock FontSize="13"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           ToolTip.Tip="The denominator excludes OpenTDB-side within-bucket text duplicates (same normalized question text listed twice in the same category/difficulty) so a fully synced cache reads X / X. A gap here means new questions are available - run Refresh.">
                     <Run Text="{Binding TotalQuestions}" />
-                    <Run Text=" questions loaded" />
+                    <Run Text=" / " />
+                    <Run Text="{Binding TotalVerified}" />
+                    <Run Text=" verified" />
                 </TextBlock>
                 <TextBlock FontSize="12"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
@@ -182,7 +186,7 @@
 
         <!-- ROW 2: settings strip -->
         <Grid Grid.Row="2"
-              ColumnDefinitions="Auto,Auto,*"
+              ColumnDefinitions="Auto,Auto,Auto,*"
               Margin="0,12,0,0">
             <ToggleSwitch Grid.Column="0"
                           OnContent="Watch clipboard"
@@ -190,10 +194,16 @@
                           IsChecked="{Binding IsClipboardWatchEnabled, Mode=TwoWay}" />
             <ToggleSwitch Grid.Column="1"
                           Margin="24,0,0,0"
+                          OnContent="Toast on auto-answer"
+                          OffContent="Toast on auto-answer"
+                          ToolTip.Tip="When the clipboard watcher swaps in an answer, also pop a small toast in the bottom-right corner regardless of window state."
+                          IsChecked="{Binding IsToastNotificationsEnabled, Mode=TwoWay}" />
+            <ToggleSwitch Grid.Column="2"
+                          Margin="24,0,0,0"
                           OnContent="Minimize to tray"
                           OffContent="Minimize to tray"
                           IsChecked="{Binding IsTrayEnabled, Mode=TwoWay}" />
-            <TextBlock Grid.Column="2"
+            <TextBlock Grid.Column="3"
                        HorizontalAlignment="Right"
                        VerticalAlignment="Center"
                        FontSize="11"

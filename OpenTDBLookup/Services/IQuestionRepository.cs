@@ -21,6 +21,32 @@ public interface IQuestionRepository
     IReadOnlyDictionary<int, int> CategoryVerifiedCounts { get; }
 
     /// <summary>
+    /// Number of OpenTDB-side within-bucket text duplicates observed at the
+    /// last successful refresh. Used by the UI to display
+    /// <c>stored / (target - knownDuplicates)</c> so the user does not see a
+    /// permanent gap caused by OpenTDB listing the same question twice in
+    /// one (cat, diff). Updated only on a refresh that completed without
+    /// hitting the API ceiling.
+    /// </summary>
+    int KnownDuplicateCount { get; }
+
+    /// <summary>
+    /// Per-category-id count of questions actually stored in the cache. Computed
+    /// from the in-memory dictionary on demand. Distinct from
+    /// <see cref="CategoryVerifiedCounts"/> which mirrors what
+    /// <c>api_count_global.php</c> reported during the last refresh - the
+    /// "target" count, not what we successfully fetched and stored.
+    /// </summary>
+    IReadOnlyDictionary<int, int> GetCachedCountsByCategory();
+
+    /// <summary>
+    /// Per-(category, difficulty) count of questions actually stored. Lets
+    /// the refresh service ask <c>api.php</c> for exactly the missing slice
+    /// of each bucket instead of probing 50/25/12 to discover the size.
+    /// </summary>
+    IReadOnlyDictionary<(int CategoryId, string Difficulty), int> GetCachedCountsByCategoryDifficulty();
+
+    /// <summary>
     /// Snapshot of normalized question text keyed by hash. Used by the matcher
     /// for the substring fallback so it does not have to re-normalize on every
     /// keystroke.
@@ -37,6 +63,14 @@ public interface IQuestionRepository
     int Merge(IEnumerable<Question> incoming);
 
     void UpdateCategoryCounts(IReadOnlyDictionary<int, int> verifiedCounts);
+
+    /// <summary>
+    /// Records the count of unfetchable-but-API-reported questions observed
+    /// after a complete refresh. The refresh service computes
+    /// <c>verifiedTotal - storedCount</c> and passes it here only when the
+    /// run finished without hitting the call ceiling.
+    /// </summary>
+    void RecordKnownDuplicateCount(int count);
 
     /// <summary>Sets both <see cref="LastFullScrape"/> and <see cref="LastCountCheck"/> to now (UTC).</summary>
     void MarkFullScrape();
