@@ -91,12 +91,25 @@ The repo ships a single signing script at `scripts/Sign-Binary.ps1` with two mod
 
 ### Local (developer) mode
 
-Place a code-signing cert in your user cert store, then:
+Place a code-signing cert in your user cert store. Three ways to point the script at it, in order of convenience:
 
 ```powershell
-$env:OPENTDB_CODESIGN_THUMBPRINT = '<sha1-thumbprint>'
-pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/OpenTDBLookup.exe
+# 1. Pass the thumbprint inline.
+pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/slim/OpenTDBLookup.exe `
+  -Thumbprint <sha1-thumbprint>
+
+# 2. .env at the repo root (gitignored). Copy .env.example to .env and edit.
+#    The script auto-loads it on every invocation.
+pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/slim/OpenTDBLookup.exe
+
+# 3. Persistent user-scope env var.
+[Environment]::SetEnvironmentVariable('OPENTDB_CODESIGN_THUMBPRINT', '<sha1-thumbprint>', 'User')
+pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/slim/OpenTDBLookup.exe
 ```
+
+If you already have your own personal signing wrapper (e.g. a `Sign-File`
+alias around `signtool`), feel free to use that directly - the included
+script is just a default for people who don't.
 
 ### CI (release pipeline) mode
 

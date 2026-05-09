@@ -12,38 +12,87 @@
 
 .PARAMETER Thumbprint
     SHA-1 thumbprint of a code-signing certificate present in the local user's
-    cert store. Read from the OPENTDB_CODESIGN_THUMBPRINT environment variable
-    by default.
+    cert store. Falls back to OPENTDB_CODESIGN_THUMBPRINT env var, which is
+    in turn populated from .env if present.
 
 .PARAMETER PfxBase64
-    Base64-encoded PFX byte stream. Read from OPENTDB_CODESIGN_PFX_B64.
+    Base64-encoded PFX byte stream. Falls back to OPENTDB_CODESIGN_PFX_B64.
 
 .PARAMETER PfxPassword
-    Plain-text password for the PFX. Read from OPENTDB_CODESIGN_PASSWORD.
+    Plain-text password for the PFX. Falls back to OPENTDB_CODESIGN_PASSWORD.
+
+.PARAMETER EnvFile
+    Optional explicit path to a .env file. Without this, the script looks at
+    repo-root\.env and ${PWD}\.env in that order. Lines are KEY=VALUE; lines
+    starting with # are comments. Existing environment variables are NOT
+    overwritten (your shell wins over .env).
 
 .EXAMPLE
-    # Local mode
-    $env:OPENTDB_CODESIGN_THUMBPRINT = '<thumbprint>'
-    pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/OpenTDBLookup.exe
+    # Local mode with .env at the repo root
+    # repo\.env contains: OPENTDB_CODESIGN_THUMBPRINT=757D7602DBB904AAAD87E82701738596DD8DB28A
+    pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/slim/OpenTDBLookup.exe
+
+.EXAMPLE
+    # Local mode passing the thumbprint inline (no env, no .env needed)
+    pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/slim/OpenTDBLookup.exe `
+        -Thumbprint 757D7602DBB904AAAD87E82701738596DD8DB28A
 
 .EXAMPLE
     # CI mode (env vars set by workflow secrets)
-    pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/OpenTDBLookup.exe
+    pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/slim/OpenTDBLookup.exe
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $Path,
     [string] $TimestampUrl = 'http://timestamp.digicert.com',
-    [string] $Thumbprint   = $env:OPENTDB_CODESIGN_THUMBPRINT,
-    [string] $PfxBase64    = $env:OPENTDB_CODESIGN_PFX_B64,
-    [string] $PfxPassword  = $env:OPENTDB_CODESIGN_PASSWORD
+    [string] $Thumbprint,
+    [string] $PfxBase64,
+    [string] $PfxPassword,
+    [string] $EnvFile
 )
 
 $ErrorActionPreference = 'Stop'
 
+# --- .env loader ---------------------------------------------------------
+# Lets a personal thumbprint or PFX live in a gitignored repo-root file
+# instead of forcing the user to set persistent user-scope env vars. Existing
+# process env vars take precedence so a CI override or a one-off shell
+# variable still wins.
+$envCandidates = @()
+if ($EnvFile) { $envCandidates += $EnvFile }
+$envCandidates += (Join-Path (Split-Path $PSScriptRoot -Parent) '.env')
+$envCandidates += (Join-Path (Get-Location).Path '.env')
+foreach ($candidate in ($envCandidates | Select-Object -Unique)) {
+    if (-not (Test-Path -LiteralPath $candidate)) { continue }
+    Write-Verbose "Loading env vars from $candidate"
+    Get-Content -LiteralPath $candidate | ForEach-Object {
+        $line = $_
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.TrimStart().StartsWith('#')) { return }
+        if ($line -match '^\s*(export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$') {
+            $name  = $matches[2]
+            $value = $matches[3]
+            if ($value.Length -ge 2 -and $value.StartsWith('"') -and $value.EndsWith('"')) {
+                $value = $value.Substring(1, $value.Length - 2)
+            } elseif ($value.Length -ge 2 -and $value.StartsWith("'") -and $value.EndsWith("'")) {
+                $value = $value.Substring(1, $value.Length - 2)
+            }
+            if (-not [Environment]::GetEnvironmentVariable($name, 'Process')) {
+                [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+            }
+        }
+    }
+    break  # only load the first candidate that exists
+}
+
+# Apply parameter -> env -> null precedence after .env has had a chance to
+# populate the environment.
+if (-not $Thumbprint)  { $Thumbprint  = $env:OPENTDB_CODESIGN_THUMBPRINT }
+if (-not $PfxBase64)   { $PfxBase64   = $env:OPENTDB_CODESIGN_PFX_B64 }
+if (-not $PfxPassword) { $PfxPassword = $env:OPENTDB_CODESIGN_PASSWORD }
+
+# --- Locate signtool -----------------------------------------------------
 if (-not (Test-Path $Path)) { throw "Binary not found: $Path" }
 
-# Locate signtool.
 $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue)?.Source
 if (-not $signtool) {
     $candidates = @(
@@ -61,6 +110,7 @@ if (-not $signtool) {
 }
 if (-not $signtool) { throw 'signtool.exe not found. Install the Windows SDK or add it to PATH.' }
 
+# --- Sign + verify -------------------------------------------------------
 $tempPfx = $null
 try {
     if ($PfxBase64) {
@@ -80,7 +130,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "signtool failed with exit code $LASTEXITCODE" }
     }
     else {
-        throw 'No signing material configured. Set OPENTDB_CODESIGN_THUMBPRINT (local) or OPENTDB_CODESIGN_PFX_B64 + OPENTDB_CODESIGN_PASSWORD (CI).'
+        throw 'No signing material configured. Pass -Thumbprint, set OPENTDB_CODESIGN_THUMBPRINT (env or .env), or supply OPENTDB_CODESIGN_PFX_B64 + OPENTDB_CODESIGN_PASSWORD for CI.'
     }
 
     & $signtool verify /v /pa $Path
