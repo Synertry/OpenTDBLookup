@@ -121,7 +121,7 @@ public partial class App : Application
     {
         try
         {
-            using var stream = AssetLoader.Open(new Uri("avares://OpenTDBLookup/Assets/tray-icon.ico"));
+            using var stream = AssetLoader.Open(new Uri("avares://OpenTDBLookup/Assets/logo.ico"));
             return new WindowIcon(stream);
         }
         catch (Exception ex)

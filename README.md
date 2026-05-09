@@ -107,9 +107,9 @@ The `Release` workflow reads two secrets:
 
 Both are mapped to `OPENTDB_CODESIGN_PFX_B64` / `OPENTDB_CODESIGN_PASSWORD` and consumed by the same script. The PFX is materialized to a temp file and securely deleted in `finally`.
 
-## Tray icon
+## App icon
 
-`OpenTDBLookup/Assets/tray-icon.ico` is a placeholder magenta square (`#D23CF2`) at 16x16 + 32x32. Replace it with your own multi-resolution `.ico` to brand the app.
+`OpenTDBLookup/Assets/logo.ico` is used both as the executable icon and the tray icon. Replace it with your own multi-resolution `.ico` to rebrand.
 
 ## Troubleshooting
 

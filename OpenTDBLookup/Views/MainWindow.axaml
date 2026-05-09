@@ -8,7 +8,7 @@
         mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="650"
         x:Class="OpenTDBLookup.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/tray-icon.ico"
+        Icon="/Assets/logo.ico"
         Title="OpenTDBLookup"
         Width="900" Height="650"
         MinWidth="600" MinHeight="400"

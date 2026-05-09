@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Assets\tray-icon.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
     <AssemblyName>OpenTDBLookup</AssemblyName>
     <Version>0.1.0</Version>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
