@@ -267,7 +267,8 @@ public sealed class RefreshService : IRefreshService
                     bucketBusy = false;
                     break;
                 case 3:
-                    // Token not found - request a fresh one and retry the bucket.
+                    // Token not found (e.g. expired after 6h idle). Request
+                    // a fresh one and retry the bucket from where we left off.
                     if ((apiCallsSoFar + callsConsumed) >= MaxApiCallsPerSession)
                     {
                         bucketBusy = false;
@@ -277,16 +278,12 @@ public sealed class RefreshService : IRefreshService
                     callsConsumed++;
                     break;
                 case 4:
-                    // Token exhausted for this query - reset the existing
-                    // token (clears its "already seen" list) rather than
-                    // creating a new session from scratch.
-                    if ((apiCallsSoFar + callsConsumed) >= MaxApiCallsPerSession)
-                    {
-                        bucketBusy = false;
-                        break;
-                    }
-                    await _client.ResetTokenAsync(token, cancellationToken).ConfigureAwait(false);
-                    callsConsumed++;
+                    // Bucket exhausted - the token has returned every question
+                    // matching this (category, difficulty) query. Move on to
+                    // the next bucket. Resetting or replacing the token here
+                    // would wipe the cross-bucket "seen" list and force us to
+                    // re-fetch the same questions on the very next request.
+                    bucketBusy = false;
                     break;
                 default:
                     _logger.LogWarning("Unexpected response_code {Code} for category {Category} {Difficulty}; skipping bucket", code, category.Name, difficulty);
