@@ -1,10 +1,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Threading;
 using FluentAvalonia.UI.Controls;
 using OpenTDBLookup.ViewModels;
 
@@ -12,44 +12,22 @@ namespace OpenTDBLookup.Views;
 
 public partial class MainWindow : Window
 {
-    private FAContentDialog? _activeScrapeDialog;
-    private ScrapeProgressDialog? _activeScrapeContent;
-
     public MainWindow()
     {
         InitializeComponent();
         Opened += OnOpened;
         Closing += OnClosing;
         PropertyChanged += OnWindowPropertyChanged;
-        DataContextChanged += OnDataContextChanged;
         AddHandler(KeyDownEvent, OnKeyDown, handledEventsToo: true);
     }
 
-    private void OnWindowPropertyChanged(object? sender, Avalonia.AvaloniaPropertyChangedEventArgs e)
+    private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (e.Property != WindowStateProperty) { return; }
         if (DataContext is not MainWindowViewModel vm || !vm.IsTrayEnabled) { return; }
         if (e.NewValue is WindowState.Minimized)
         {
             Hide();
-        }
-    }
-
-    private MainWindowViewModel? _subscribedVm;
-
-    private void OnDataContextChanged(object? sender, EventArgs e)
-    {
-        if (_subscribedVm is { } previous)
-        {
-            previous.InitialScrapeRequested -= OnInitialScrapeRequested;
-            previous.InitialScrapeCompleted -= OnInitialScrapeCompleted;
-            _subscribedVm = null;
-        }
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.InitialScrapeRequested += OnInitialScrapeRequested;
-            vm.InitialScrapeCompleted += OnInitialScrapeCompleted;
-            _subscribedVm = vm;
         }
     }
 
@@ -68,7 +46,12 @@ public partial class MainWindow : Window
         if (DataContext is not MainWindowViewModel vm) { return; }
 
         InputBox.Focus();
-        await vm.InitializeAsync(CancellationToken.None).ConfigureAwait(true);
+        await vm.InitializeAsync(CancellationToken.None);
+
+        if (vm.RequiresInitialScrape)
+        {
+            await ShowInitialScrapeDialogAsync(vm);
+        }
     }
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
@@ -96,46 +79,74 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnInitialScrapeRequested(object? sender, ScrapeProgressViewModel scrapeVm)
+    /// <summary>
+    /// Drives the modal initial-scrape dialog. The dialog and the scrape
+    /// task race via <c>Task.WhenAny</c>: whichever finishes first
+    /// triggers cleanup of the other. Tracking dialog dismissal through its
+    /// own <c>Closed</c> event (rather than relying on <c>ShowAsync</c>'s
+    /// task-completion semantics) avoids a Hide()/animation race we hit with
+    /// FluentAvalonia 3.0.0-preview2.
+    /// </summary>
+    private async Task ShowInitialScrapeDialogAsync(MainWindowViewModel vm)
     {
+        var scrapeVm = new ScrapeProgressViewModel { ApiCallsCeiling = 250, CanCancel = true };
+        using var cts = new CancellationTokenSource();
+        scrapeVm.CancelRequested = cts.Cancel;
+
+        var content = new ScrapeProgressDialog { DataContext = scrapeVm };
+        var dialog = new FAContentDialog
+        {
+            Title = "Building local question cache",
+            Content = content,
+            CloseButtonText = "Cancel in background",
+            DefaultButton = FAContentDialogButton.Close,
+        };
+        dialog.CloseButtonClick += (_, _) => cts.Cancel();
+
+        var dialogClosed = new TaskCompletionSource();
+        dialog.Closed += (_, _) => dialogClosed.TrySetResult();
+
+        Task<OpenTDBLookup.Services.RefreshResult>? scrapeTask = null;
         try
         {
-            _activeScrapeContent = new ScrapeProgressDialog { DataContext = scrapeVm };
-            _activeScrapeDialog = new FAContentDialog
+            scrapeTask = vm.RunInitialScrapeAsync(scrapeVm, cts.Token);
+            // ShowAsync returns a Task<FAContentDialogResult> that completes
+            // when the dialog hides. We do NOT await it here because the
+            // 3.0.0-preview2 path can leave that task uncompleted in some
+            // edge cases - the Closed event TCS is the source of truth.
+            _ = dialog.ShowAsync(this);
+
+            await Task.WhenAny(scrapeTask, dialogClosed.Task);
+
+            if (scrapeTask.IsCompleted && !dialogClosed.Task.IsCompleted)
             {
-                Title = "Building local question cache",
-                Content = _activeScrapeContent,
-                CloseButtonText = "Cancel in background",
-                DefaultButton = FAContentDialogButton.Close,
-            };
-            _activeScrapeDialog.CloseButtonClick += (_, _) =>
+                // Scrape finished first (success or failure). Dismiss the dialog.
+                dialog.Hide(FAContentDialogResult.None);
+                await dialogClosed.Task;
+            }
+            else
             {
-                if (DataContext is MainWindowViewModel vm) { vm.CancelActiveScrape(); }
-            };
-            // Fire-and-forget; the VM raises InitialScrapeCompleted to dismiss.
-            await _activeScrapeDialog.ShowAsync().ConfigureAwait(true);
+                // User dismissed the dialog. Cancel the scrape and let it unwind.
+                cts.Cancel();
+            }
         }
         catch (InvalidOperationException ex)
         {
-            // The dialog throws if no top-level is associated yet; the VM
-            // still drives the scrape, but we surface the failure to the
-            // status line so the user knows progress is happening invisibly.
-            if (DataContext is MainWindowViewModel vm)
+            vm.StatusMessage = $"Scrape dialog failed to open ({ex.Message}); progress runs inline";
+            cts.Cancel();
+        }
+
+        // Make sure the scrape task observes its exception and finalizes
+        // VM state - regardless of whether dialog or scrape "won" the race.
+        if (scrapeTask is not null)
+        {
+            try { await scrapeTask; }
+            catch (OperationCanceledException) { /* expected on user cancel */ }
+            catch (Exception ex)
             {
-                vm.StatusMessage = $"Scrape dialog failed to open ({ex.Message}); progress will appear inline";
+                vm.StatusMessage = $"Initial scrape failed: {ex.Message}";
             }
         }
-    }
-
-    private void OnInitialScrapeCompleted(object? sender, EventArgs e)
-    {
-        if (_activeScrapeDialog is null) { return; }
-        Dispatcher.UIThread.Post(() =>
-        {
-            _activeScrapeDialog.Hide(FAContentDialogResult.None);
-            _activeScrapeDialog = null;
-            _activeScrapeContent = null;
-        });
     }
 
     /// <summary>

@@ -104,30 +104,17 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
     }
 
-    /// <summary>
-    /// Raised when the VM wants the View to show the modal scrape dialog with
-    /// the supplied <see cref="ScrapeProgressViewModel"/> as its DataContext.
-    /// </summary>
-    public event EventHandler<ScrapeProgressViewModel>? InitialScrapeRequested;
-
-    /// <summary>Raised when the VM wants the View to dismiss the scrape dialog.</summary>
-    public event EventHandler? InitialScrapeCompleted;
-
     /// <summary>True while the initial scrape is showing the modal dialog.</summary>
     public bool IsInitialScrapeRunning { get; private set; }
 
-    private CancellationTokenSource? _activeScrapeCts;
+    /// <summary>True after <see cref="InitializeAsync"/> if the cache was empty and the View should host the initial-scrape dialog.</summary>
+    public bool RequiresInitialScrape { get; private set; }
 
     /// <summary>
-    /// Cancels the in-progress initial scrape, if any. Safe to call when no
-    /// scrape is running. Used by the dialog Cancel button and the tray menu.
-    /// </summary>
-    public void CancelActiveScrape() => _activeScrapeCts?.Cancel();
-
-    /// <summary>
-    /// Loads the cache, kicks off the initial scrape modal if empty, otherwise
-    /// fires off an incremental refresh in the background when the cache is
-    /// stale. Safe to call exactly once during window startup.
+    /// Loads the cache and decides whether the View needs to host the initial
+    /// scrape dialog. The View calls <see cref="RunInitialScrapeAsync"/>
+    /// itself rather than the VM driving the dialog through events, so the
+    /// dialog lifetime stays under one owner and dismissal is deterministic.
     /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
@@ -138,7 +125,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
             if (_repository.Count == 0)
             {
-                await RunInitialScrapeAsync(cancellationToken).ConfigureAwait(true);
+                RequiresInitialScrape = true;
             }
             else if (await _refresh.ShouldRefreshAsync().ConfigureAwait(true))
             {
@@ -208,7 +195,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     [RelayCommand]
-    // [RelayCommand] generates a public RefreshAsyncCommand of type
+    // [RelayCommand] generates a public RefreshCommand of type
     // IAsyncRelayCommand. XAML can bind directly to that generated property.
     private async Task RefreshAsync(CancellationToken cancellationToken)
     {
@@ -216,26 +203,25 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         IsRefreshing = true;
         try
         {
-            if (_repository.Count == 0)
+            // The incremental refresh path also handles an empty cache
+            // correctly: every category's stored count is 0, so every
+            // category gets scraped. We use it for both "fill cache" and
+            // "check for new questions" so the inline progress strip works
+            // for either.
+            StatusMessage = _repository.Count == 0 ? "Building cache..." : "Refreshing...";
+            ProgressValue = 0;
+            ProgressLabel = "Checking for new questions";
+            var progress = new Progress<ScrapeProgress>(p =>
             {
-                await RunInitialScrapeAsync(cancellationToken).ConfigureAwait(true);
-            }
-            else
-            {
-                StatusMessage = "Refreshing...";
-                ProgressValue = 0;
-                ProgressLabel = "Checking for new questions";
-                var progress = new Progress<ScrapeProgress>(p =>
-                {
-                    ProgressValue = p.PercentComplete;
-                    ProgressLabel = $"{p.CurrentCategory} ({p.CurrentDifficulty}) - {p.ApiCallsMade}/{p.ApiCallsCeiling} calls";
-                });
-                var result = await _refresh.IncrementalRefreshAsync(progress, cancellationToken).ConfigureAwait(true);
-                StatusMessage = result.QuestionsAdded == 0
-                    ? "Up to date"
-                    : $"Added {result.QuestionsAdded} new question(s)";
-            }
+                ProgressValue = p.PercentComplete;
+                ProgressLabel = $"{p.CurrentCategory} ({p.CurrentDifficulty}) - {p.ApiCallsMade}/{p.ApiCallsCeiling} calls";
+            });
+            var result = await _refresh.IncrementalRefreshAsync(progress, cancellationToken).ConfigureAwait(true);
+            StatusMessage = result.QuestionsAdded == 0
+                ? "Up to date"
+                : $"Added {result.QuestionsAdded} new question(s)";
             UpdateRepoStats();
+            RequiresInitialScrape = _repository.Count == 0;
         }
         catch (OperationCanceledException)
         {
@@ -300,38 +286,42 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private async Task RunInitialScrapeAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Runs the initial scrape and updates VM state around it. Caller owns
+    /// the <see cref="CancellationToken"/> - the View typically holds the CTS
+    /// and surfaces the same token to whatever Cancel mechanism it builds.
+    /// Throws <see cref="OperationCanceledException"/> on user cancel; the
+    /// View should swallow that.
+    /// </summary>
+    public async Task<RefreshResult> RunInitialScrapeAsync(ScrapeProgressViewModel progress, CancellationToken cancellationToken)
     {
-        var scrapeVm = new ScrapeProgressViewModel { ApiCallsCeiling = 250, CanCancel = true };
-        _activeScrapeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        scrapeVm.CancelRequested = CancelActiveScrape;
         IsInitialScrapeRunning = true;
-        InitialScrapeRequested?.Invoke(this, scrapeVm);
+        IsRefreshing = true;
         try
         {
-            IsRefreshing = true;
-            var result = await _refresh.InitialScrapeAsync(scrapeVm, _activeScrapeCts.Token).ConfigureAwait(true);
+            var result = await _refresh.InitialScrapeAsync(progress, cancellationToken).ConfigureAwait(true);
             StatusMessage = result.HitCeiling
                 ? $"Partial scrape: {result.QuestionsAdded} added, ceiling reached"
                 : $"Loaded {result.QuestionsAdded} questions in {result.Duration.TotalSeconds:F1}s";
+            RequiresInitialScrape = _repository.Count == 0;
+            return result;
         }
         catch (OperationCanceledException)
         {
             StatusMessage = "Initial scrape cancelled";
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Initial scrape failed");
             StatusMessage = $"Initial scrape failed: {ex.Message}";
+            throw;
         }
         finally
         {
             IsRefreshing = false;
             IsInitialScrapeRunning = false;
             UpdateRepoStats();
-            InitialScrapeCompleted?.Invoke(this, EventArgs.Empty);
-            _activeScrapeCts?.Dispose();
-            _activeScrapeCts = null;
         }
     }
 
@@ -405,8 +395,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _watcher.Stop();
         _searchCts?.Cancel();
         _searchCts?.Dispose();
-        _activeScrapeCts?.Cancel();
-        _activeScrapeCts?.Dispose();
     }
 
     // ---------------------------------------------------------------------
