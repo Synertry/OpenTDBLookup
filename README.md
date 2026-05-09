@@ -16,7 +16,14 @@ OpenTDBLookup is a small Windows desktop app that maintains a local cache of eve
 
 ## Quick start
 
-1. Download `OpenTDBLookup.exe` from the [Releases](../../releases) page.
+Two builds are published with each release:
+
+- **`OpenTDBLookup-vX.Y.Z-win-x64.exe`** (slim, ~16 MB) - default. Requires the [.NET 10 runtime](https://dotnet.microsoft.com/download) on the target machine.
+- **`OpenTDBLookup-vX.Y.Z-win-x64-selfcontained.exe`** (portable, ~50 MB) - bundles the runtime. Use this when you can't or won't install .NET 10 on the target machine.
+
+Steps:
+
+1. Download whichever `.exe` matches your situation from the [Releases](../../releases) page.
 2. Drop it anywhere on disk and double-click to run. No installer required.
 3. The first launch performs the initial scrape (~5-10 minutes; the OpenTDB API enforces a 5-second gap between requests).
 4. Once the dialog closes, paste a question into the input box. The correct answer appears below.
@@ -54,14 +61,29 @@ cd OpenTDBLookup
 dotnet restore
 dotnet build
 dotnet test
-dotnet publish OpenTDBLookup -c Release -r win-x64 --self-contained `
-  -p:PublishSingleFile=true `
-  -p:PublishReadyToRun=true `
-  -p:IncludeNativeLibrariesForSelfExtract=true `
-  -o ./publish
 ```
 
-The published binary is `./publish/OpenTDBLookup.exe`.
+Two publish profiles are supported.
+
+**Slim** - framework-dependent, requires .NET 10 on the target. Smallest binary, fastest startup. Use this for personal use and CI builds where you control the runtime:
+
+```powershell
+dotnet publish OpenTDBLookup -c Release -r win-x64 --no-self-contained `
+  -p:PublishSingleFile=true `
+  -o ./publish/slim
+```
+
+**Portable** - self-contained, bundles the .NET runtime. Larger binary; runs anywhere x64 Windows runs. Use this when you ship to machines you don't control:
+
+```powershell
+dotnet publish OpenTDBLookup -c Release -r win-x64 --self-contained `
+  -p:PublishSingleFile=true `
+  -p:EnableCompressionInSingleFile=true `
+  -p:IncludeNativeLibrariesForSelfExtract=true `
+  -o ./publish/portable
+```
+
+`PublishReadyToRun` is intentionally not used - it adds ~40 MB for ~200 ms of cold-start savings, which is the wrong trade for a desktop tool you click once per session.
 
 ## Code signing
 
