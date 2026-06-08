@@ -112,20 +112,32 @@ if (-not $signtool) { throw 'signtool.exe not found. Install the Windows SDK or 
 
 # --- Sign + verify -------------------------------------------------------
 $tempPfx = $null
+$importedCertThumbprint = $null
 try {
     if ($PfxBase64) {
-        # CI mode: materialize PFX, sign, then nuke the file in finally.
+        # CI mode: materialize PFX, import into the runner's CurrentUser cert
+        # store, sign by thumbprint, then remove both the file and the cert.
+        #
+        # Why not signtool /f /p: that pattern puts the PFX password on the
+        # signtool process command line, which is visible to other processes
+        # under the same user (Task Manager, Sysmon, ETW traces). Importing
+        # the cert means the password only crosses Import-PfxCertificate's
+        # SecureString boundary and never appears on a command line.
         if (-not $PfxPassword) {
             throw 'OPENTDB_CODESIGN_PASSWORD must be set when using PFX base64.'
         }
         $tempPfx = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N') + '.pfx')
         [IO.File]::WriteAllBytes($tempPfx, [Convert]::FromBase64String($PfxBase64))
 
-        & $signtool sign /v /fd SHA256 /td SHA256 /tr $TimestampUrl /f $tempPfx /p $PfxPassword $Path
+        $securePass = ConvertTo-SecureString -String $PfxPassword -AsPlainText -Force
+        $imported = Import-PfxCertificate -FilePath $tempPfx -CertStoreLocation 'Cert:\CurrentUser\My' -Password $securePass
+        $importedCertThumbprint = $imported.Thumbprint
+
+        & $signtool sign /v /fd SHA256 /td SHA256 /tr $TimestampUrl /sm /sha1 $importedCertThumbprint $Path
         if ($LASTEXITCODE -ne 0) { throw "signtool failed with exit code $LASTEXITCODE" }
     }
     elseif ($Thumbprint) {
-        # Local mode: certificate is in the user's cert store.
+        # Local mode: certificate is already in the user's cert store.
         & $signtool sign /v /fd SHA256 /td SHA256 /tr $TimestampUrl /sha1 $Thumbprint $Path
         if ($LASTEXITCODE -ne 0) { throw "signtool failed with exit code $LASTEXITCODE" }
     }
@@ -138,6 +150,13 @@ try {
     Write-Host "Signed and verified: $Path" -ForegroundColor Green
 }
 finally {
+    if ($importedCertThumbprint) {
+        try {
+            Remove-Item -Path "Cert:\CurrentUser\My\$importedCertThumbprint" -Force -ErrorAction SilentlyContinue
+        } catch {
+            Write-Warning "Failed to remove temp cert from store: $_"
+        }
+    }
     if ($tempPfx -and (Test-Path $tempPfx)) {
         try {
             Remove-Item $tempPfx -Force
@@ -149,5 +168,6 @@ finally {
     # 'env' dump, child process, or hung shell session does not leak the
     # password. Remove-Variable only clears the local script binding.
     Remove-Variable -Name 'PfxPassword' -ErrorAction SilentlyContinue
+    Remove-Variable -Name 'securePass' -ErrorAction SilentlyContinue
     $env:OPENTDB_CODESIGN_PASSWORD = $null
 }
