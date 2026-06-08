@@ -87,7 +87,9 @@ dotnet publish OpenTDBLookup -c Release -r win-x64 --self-contained `
 
 ## Code signing
 
-The repo ships a single signing script at `scripts/Sign-Binary.ps1` with two modes.
+> **Note:** Public releases are currently **unsigned** because the project does not yet hold a public code-signing certificate. Windows SmartScreen will show an "unrecognized publisher" warning the first time you run a release binary. Verify integrity via the published `SHA256SUMS.txt` (see [Security](.github/SECURITY.md)) until a real cert lands.
+
+The repo ships a single signing script at `scripts/Sign-Binary.ps1` with two modes. The CI release pipeline already integrates with it; the moment the `CODESIGN_PFX_B64` + `CODESIGN_PASSWORD` repo secrets are configured, signing turns on with no code change.
 
 ### Local (developer) mode
 
@@ -113,12 +115,14 @@ script is just a default for people who don't.
 
 ### CI (release pipeline) mode
 
-The `Release` workflow reads two secrets:
+When the `CODESIGN_PFX_B64` + `CODESIGN_PASSWORD` repo secrets exist, the `Release` workflow signs both built binaries before attaching them to the GitHub Release. When the secrets are absent (current default), the sign steps are skipped and the workflow publishes unsigned binaries plus `SHA256SUMS.txt`.
+
+Secret contract:
 
 - `CODESIGN_PFX_B64` - base64-encoded PFX byte stream
-- `CODESIGN_PASSWORD` - plain-text PFX password
+- `CODESIGN_PASSWORD` - PFX password
 
-Both are mapped to `OPENTDB_CODESIGN_PFX_B64` / `OPENTDB_CODESIGN_PASSWORD` and consumed by the same script. The PFX is materialized to a temp file and securely deleted in `finally`.
+Both are mapped to `OPENTDB_CODESIGN_PFX_B64` / `OPENTDB_CODESIGN_PASSWORD` and consumed by the same script. The PFX is imported into the runner's cert store, signed by thumbprint, then removed; the temp file and cert are cleaned up in `finally`.
 
 ## App icon
 

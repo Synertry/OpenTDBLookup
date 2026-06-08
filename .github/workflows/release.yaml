@@ -141,13 +141,28 @@ jobs:
             -o ./publish/portable
           Move-Item ./publish/portable/OpenTDBLookup.exe ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64-selfcontained.exe
 
+      - name: Check signing secrets
+        id: check_secrets
+        shell: bash # only this step uses bash; the rest of the job stays pwsh
+        env:
+          PFX: ${{ secrets.CODESIGN_PFX_B64 }}
+        run: |
+          if [ -z "$PFX" ]; then
+            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No code-signing secrets configured. Publishing unsigned binaries; verify via SHA256SUMS.txt."
+          else
+            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Sign slim binary
+        if: steps.check_secrets.outputs.has_secrets == 'true'
         env:
           OPENTDB_CODESIGN_PFX_B64: ${{ secrets.CODESIGN_PFX_B64 }}
           OPENTDB_CODESIGN_PASSWORD: ${{ secrets.CODESIGN_PASSWORD }}
         run: pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64.exe
 
       - name: Sign portable binary
+        if: steps.check_secrets.outputs.has_secrets == 'true'
         env:
           OPENTDB_CODESIGN_PFX_B64: ${{ secrets.CODESIGN_PFX_B64 }}
           OPENTDB_CODESIGN_PASSWORD: ${{ secrets.CODESIGN_PASSWORD }}

@@ -39,9 +39,9 @@ Out of scope:
 - Issues in third-party dependencies that do not have a known impact on this app's attack surface (file a Dependabot upgrade instead).
 - Social-engineering / phishing attacks unrelated to the app's behavior.
 
-## Code Signing
+## Binary Integrity
 
-Releases are signed with a developer code-signing certificate. SHA-256 checksums are published alongside each release (`SHA256SUMS.txt`). Verify the binary you downloaded matches the published checksum before running it:
+Public release binaries are currently **unsigned** (the project does not yet hold a public code-signing certificate). Windows SmartScreen will warn about an unrecognized publisher on first run. The primary integrity gate is the SHA-256 checksum file published alongside every release (`SHA256SUMS.txt`); verify it before running:
 
 ```pwsh
 # Get-FileHash returns the hash in uppercase; SHA256SUMS.txt stores it in
