@@ -21,7 +21,7 @@ jobs:
       created: ${{ steps.create_tag.outputs.created }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           fetch-depth: 0
           filter: blob:none # skip file contents; we only need history for semver
@@ -74,7 +74,7 @@ jobs:
         shell: pwsh
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           ref: refs/tags/${{ needs.tag.outputs.version_tag }}
           # Fetch the tag explicitly with a small retry loop in case the tag push
@@ -100,7 +100,7 @@ jobs:
           exit 1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5.0.0
+        uses: actions/setup-dotnet@v5.3.0
         with:
           dotnet-version: '10.0.x'
 
@@ -190,7 +190,7 @@ jobs:
             ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64-selfcontained.exe
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4.6.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64
           path: |
@@ -210,14 +210,13 @@ jobs:
       contents: write
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v4.1.8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64
           path: ./publish
 
       - name: Create GitHub Release
-        # SHA-pinned third-party action; Dependabot updates with cooldown.
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@v3.0.0
         with:
           tag_name: ${{ needs.tag.outputs.version_tag }}
           name: ${{ needs.tag.outputs.version_tag }}

@@ -31,10 +31,9 @@ jobs:
     needs: triage
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
       - name: Label PR based on size
-        # SHA-pinned third-party action; Dependabot updates with cooldown.
-        uses: cbrgm/pr-size-labeler-action@488accb0790ed3f4653aa70c4d46cd3fc0c8f2f9 # v1.3.9
+        uses: cbrgm/pr-size-labeler-action@v1.3.9
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_repository: ${{ github.repository }}
