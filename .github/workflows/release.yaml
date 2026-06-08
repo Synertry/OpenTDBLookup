@@ -64,6 +64,8 @@ jobs:
     runs-on: windows-latest # required for publish-and-sign with signtool
     permissions:
       contents: read
+      id-token: write # Sigstore OIDC token exchange for attest-build-provenance
+      attestations: write # write the attestation back to the repo's attestation log
     defaults:
       run:
         # All run: blocks in this job use pwsh-only syntax (backtick continuation,
@@ -149,7 +151,7 @@ jobs:
         run: |
           if [ -z "$PFX" ]; then
             echo "has_secrets=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No code-signing secrets configured. Publishing unsigned binaries; verify via SHA256SUMS.txt."
+            echo "::notice::No code-signing secrets configured. Publishing unsigned binaries; integrity is gated by the Sigstore-backed build provenance attestation (verify with 'gh attestation verify <binary> --owner ${{ github.repository_owner }}')."
           else
             echo "has_secrets=true" >> "$GITHUB_OUTPUT"
           fi
@@ -175,6 +177,17 @@ jobs:
             "$($hash.Hash.ToLower())  $($_.Name)" | Out-File -Append -Encoding ascii ./publish/SHA256SUMS.txt
           }
           Get-Content ./publish/SHA256SUMS.txt
+
+      - name: Attest build provenance
+        # Sigstore-backed cryptographic attestation tying each binary to this
+        # workflow run + source commit + build environment. Free, cert-less,
+        # and the primary integrity gate when code-signing is off. Verify with:
+        #   gh attestation verify <binary> --owner Synertry
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64.exe
+            ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64-selfcontained.exe
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4.6.1

@@ -87,7 +87,7 @@ dotnet publish OpenTDBLookup -c Release -r win-x64 --self-contained `
 
 ## Code signing
 
-> **Note:** Public releases are currently **unsigned** because the project does not yet hold a public code-signing certificate. Windows SmartScreen will show an "unrecognized publisher" warning the first time you run a release binary. Verify integrity via the published `SHA256SUMS.txt` (see [Security](.github/SECURITY.md)) until a real cert lands.
+> **Note:** Public releases are currently **unsigned** because the project does not yet hold a public code-signing certificate. Windows SmartScreen will show an "unrecognized publisher" warning the first time you run a release binary. Verify integrity via the Sigstore-backed build provenance attestation: `gh attestation verify <binary> --owner Synertry` (see [Security](.github/SECURITY.md)) until a real cert lands.
 
 The repo ships a single signing script at `scripts/Sign-Binary.ps1` with two modes. The CI release pipeline already integrates with it; the moment the `CODESIGN_PFX_B64` + `CODESIGN_PASSWORD` repo secrets are configured, signing turns on with no code change.
 

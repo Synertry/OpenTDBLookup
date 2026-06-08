@@ -41,12 +41,14 @@ Out of scope:
 
 ## Binary Integrity
 
-Public release binaries are currently **unsigned** (the project does not yet hold a public code-signing certificate). Windows SmartScreen will warn about an unrecognized publisher on first run. The primary integrity gate is the SHA-256 checksum file published alongside every release (`SHA256SUMS.txt`); verify it before running:
+Public release binaries are currently **unsigned** (the project does not yet hold a public code-signing certificate). Windows SmartScreen will warn about an unrecognized publisher on first run.
+
+Integrity is gated by a **Sigstore-backed build provenance attestation** published with every release. The attestation cryptographically ties each binary to the GitHub Actions workflow run, source commit, and build environment that produced it - and lives on the public Sigstore transparency log, so a tampered release asset cannot fake a valid attestation. Verify before running:
 
 ```pwsh
-# Get-FileHash returns the hash in uppercase; SHA256SUMS.txt stores it in
-# lowercase. Compare case-insensitively, or lowercase the output first.
-(Get-FileHash .\OpenTDBLookup-vX.Y.Z-win-x64.exe -Algorithm SHA256).Hash.ToLower()
+gh attestation verify .\OpenTDBLookup-vX.Y.Z-win-x64.exe --owner Synertry
 ```
 
-If a checksum does not match, **do not run the binary** and please report it via the channels above.
+If verification fails, **do not run the binary** and please report it via the channels above.
+
+A `SHA256SUMS.txt` file is also published alongside the binaries for convenience (CI logs, mirrors, quick eyeballing), but it is shipped from the same source as the binaries themselves and is **not** an independent integrity control - always prefer the attestation verification above.
