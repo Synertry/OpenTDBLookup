@@ -1,0 +1,196 @@
+# Runs on push to main; the heavy validation gate before integrating to release.
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+
+# Cancel in-flight CI runs on the same ref when a new push lands
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  precheck:
+    # Skip the expensive jobs when the push is documentation-only, but mark the
+    # gate green so protected-branch rules still pass. GH has no native way to
+    # express "succeed without running children", hence this scaffolding.
+    name: Precheck
+    runs-on: ubuntu-latest
+    outputs:
+      doc_only: ${{ steps.diff_check.outputs.output }}
+      is_dependabot: ${{ steps.detect_dependabot.outputs.is_dependabot }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 2 # need HEAD^ for diff
+
+      - name: Check diff
+        id: diff_check
+        run: |
+          # HEAD^ does not exist on the very first commit (no parent). Treat
+          # the initial push as non-docs-only so the gate runs the full pipeline.
+          if ! git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            echo "No parent commit; treating as non-docs-only."
+            echo "output=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          diff=$(git diff --name-only HEAD^ HEAD)
+          docs_change_count=$(echo "$diff" | grep -E -e "\.md$" -e "LICENSE$" -e "CODEOWNERS$" | wc -l)
+
+          if [ -n "$diff" ] && [ "$docs_change_count" -eq "$(echo "$diff" | wc -l)" ]; then
+              echo "output=true" >> $GITHUB_OUTPUT
+          else
+              echo "output=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect Dependabot push
+        id: detect_dependabot
+        # `github.actor` is GitHub-verified and unspoofable, unlike commit-message
+        # signature matching which a malicious maintainer could forge to bypass
+        # the review-PR gate.
+        run: |
+          if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
+            echo "Dependabot push detected."
+            echo "is_dependabot=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_dependabot=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  lint:
+    name: Lint
+    needs: precheck
+    if: needs.precheck.outputs.doc_only != 'true' && needs.precheck.outputs.is_dependabot != 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/lint.yaml
+
+  test:
+    name: Test on ${{ matrix.os }}
+    needs: lint
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        # windows-latest is the publish target. ubuntu-latest exercises the
+        # cross-platform code paths (text normalizer, HTTP client, repository)
+        # cheaply and catches Windows-specific assumptions creeping in.
+        os: [windows-latest, ubuntu-latest]
+    uses: ./.github/workflows/test.yaml
+    with:
+      os: ${{ matrix.os }}
+      dotnet-version: '10.0.x'
+
+  review:
+    name: Review
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      security-events: write # CodeQL upload
+      actions: read
+      contents: read
+      pull-requests: write # dependency-review summary comment
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet
+        uses: actions/cache@v5.0.5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore --locked-mode
+
+      # CodeQL needs the build to happen between init and analyze for compiled
+      # languages. C# is autobuild-friendly but we use our own restored build
+      # for reproducibility.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: csharp
+          build-mode: manual
+
+      - name: Build for CodeQL
+        run: dotnet build -c Release --no-restore
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+
+      - name: Dependency Review
+        # Compares the dep graph on main vs release. Runs on every push to main
+        # so dep changes are gated before they reach the release branch via the
+        # integrate auto-PR. base/head refs are explicit because this is a push
+        # event, not a PR (the action defaults pull from PR context).
+        uses: actions/dependency-review-action@v5.0.0
+        with:
+          base-ref: refs/heads/release
+          head-ref: refs/heads/main
+          fail-on-severity: high
+          # MS-RL is weak-copyleft (reciprocal); excluded since this app is MIT
+          # and ships statically-linked binaries.
+          allow-licenses: MIT, BSL-1.0, BSD-3-Clause, BSD-2-Clause, Apache-2.0, ISC, Zlib, MPL-2.0, MS-PL
+
+  integrate:
+    # Open (or update) the main -> release PR after green CI, so the release
+    # branch only ever fast-forwards over reviewed commits. Dependabot bumps
+    # are pushed directly without a review PR because they ran the full gate.
+    name: Integrate to release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    needs:
+      - precheck
+      - review
+    # Skip docs-only pushes: precheck succeeds but lint/test/review skip, which
+    # would otherwise make this fire and open spurious main->release PRs for
+    # every README edit.
+    if: ${{ always() && needs.precheck.outputs.doc_only != 'true' && contains(needs.*.result, 'success') && !(contains(needs.*.result, 'failure')) }}
+    env:
+      GH_TOKEN: ${{ secrets.PAT }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT }}
+
+      - name: Create Pull Request
+        if: ${{ needs.precheck.outputs.is_dependabot != 'true' }}
+        run: |
+          git fetch origin release
+
+          existing_pr=$(gh pr list --base release --head main --state open --json number --jq length)
+
+          if [ "$existing_pr" -gt 0 ]; then
+            echo "PR already exists. Skipping creation."
+          else
+            echo "Creating PR from main to release..."
+            gh pr create \
+              --base release \
+              --head main \
+              --fill \
+              --label "workflow/auto-pr"
+          fi
+
+      - name: Commit to release
+        if: ${{ needs.precheck.outputs.is_dependabot == 'true' }}
+        run: |
+          echo "Dependabot Bump. Pushing to release..."
+          git push origin HEAD:refs/heads/release

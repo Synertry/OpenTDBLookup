@@ -1,0 +1,67 @@
+# Lightweight gate for PRs targeting main, before CI's expensive matrix runs.
+name: PR Test
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.github/CODEOWNERS'
+      - 'notes/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    uses: ./.github/workflows/lint.yaml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ github.head_ref }}
+
+  test:
+    name: Test
+    needs: lint
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/test.yaml
+    with:
+      os: ubuntu-latest # one OS only on PRs; the full matrix runs in CI on main
+      dotnet-version: '10.0.x'
+      ref: ${{ github.head_ref }}
+
+  label:
+    name: Grant Label
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      LABELS: status/pr-test-passed
+    steps:
+      - name: Adds passed label
+        run: gh pr edit ${{ env.PR_NUMBER }} --add-label "${{ env.LABELS }}"
+
+  dependabot:
+    name: Dependabot auto-merge
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Enable auto-merge for Dependabot PRs
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.PAT }}

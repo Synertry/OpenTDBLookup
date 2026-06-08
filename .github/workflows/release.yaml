@@ -1,0 +1,200 @@
+# Triggered by every push to the `release` branch. Calculates the next semver
+# from conventional commits, tags, builds two signed Windows binaries, and
+# publishes a GitHub Release with auto-generated notes.
+name: Release
+
+on:
+  push:
+    branches:
+      - release
+
+permissions:
+  contents: write # required to push tags and create the release
+
+jobs:
+  tag:
+    name: Calculate & Push Tag
+    runs-on: ubuntu-latest # cheaper than windows-latest; the build job uses windows
+    outputs:
+      version_tag: ${{ steps.semver.outputs.version_tag }}
+      version: ${{ steps.semver.outputs.version }}
+      created: ${{ steps.create_tag.outputs.created }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          filter: blob:none # skip file contents; we only need history for semver
+          token: ${{ secrets.PAT }}
+
+      - name: Calculate Next Version
+        id: semver
+        uses: PaulHatch/semantic-version@v6.0.2
+        with:
+          search_commit_body: true
+          enable_prerelease_mode: true
+          # Skip commits that shouldn't bump the version. Anchored, grouped, and
+          # requires the `:` terminator + optional `(scope)` from Conventional
+          # Commits so commits like "build fix for X" don't accidentally match
+          # "^build" alone.
+          ignore_commits_pattern: '/^(docs|chore|style|refactor|perf|test|ci|build|revert)(\(.+\))?:/'
+
+      - name: Create & Push Tag
+        id: create_tag
+        env:
+          NEXT_TAG: ${{ steps.semver.outputs.version_tag }}
+          GH_TOKEN: ${{ secrets.PAT }}
+        run: |
+          if git rev-parse "$NEXT_TAG" >/dev/null 2>&1; then
+            echo "Tag $NEXT_TAG already exists. Nothing to release."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NEXT_TAG" -m "Release $NEXT_TAG"
+          git push origin "$NEXT_TAG"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build & Sign Windows Binaries
+    needs: tag
+    if: needs.tag.outputs.created == 'true'
+    runs-on: windows-latest # required for publish-and-sign with signtool
+    permissions:
+      contents: read
+    defaults:
+      run:
+        # All run: blocks in this job use pwsh-only syntax (backtick continuation,
+        # $env:VAR, Get-ChildItem, Move-Item, Out-File). windows-latest defaults
+        # to pwsh in practice but that's not documented behavior - pin it.
+        shell: pwsh
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: refs/tags/${{ needs.tag.outputs.version_tag }}
+          # Fetch the tag explicitly with a small retry loop in case the tag push
+          # from the previous job hasn't fully propagated to read replicas yet.
+          fetch-tags: true
+          fetch-depth: 0
+
+      - name: Wait for tag visibility
+        run: |
+          $tag = "${{ needs.tag.outputs.version_tag }}"
+          $attempts = 0
+          while ($attempts -lt 10) {
+            git fetch --tags origin
+            if (git tag --list $tag) {
+              Write-Host "Tag $tag is visible."
+              exit 0
+            }
+            $attempts++
+            Write-Host "Tag $tag not yet visible (attempt $attempts/10); sleeping 3s..."
+            Start-Sleep -Seconds 3
+          }
+          Write-Error "Tag $tag never became visible after 30s. Aborting."
+          exit 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet
+        uses: actions/cache@v5.0.5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore (locked mode)
+        run: dotnet restore --locked-mode
+
+      - name: Test
+        # One last test pass against the tagged source; ubuntu+windows already
+        # ran on the same commit during CI, but a sanity gate here catches
+        # tag-vs-source drift.
+        run: dotnet test -c Release --no-restore --verbosity normal
+
+      - name: Publish slim (framework-dependent)
+        env:
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          dotnet publish OpenTDBLookup -c Release -r win-x64 --no-self-contained `
+            -p:PublishSingleFile=true `
+            -p:Version=$env:VERSION `
+            -o ./publish/slim
+          Move-Item ./publish/slim/OpenTDBLookup.exe ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64.exe
+
+      - name: Publish portable (self-contained)
+        env:
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          dotnet publish OpenTDBLookup -c Release -r win-x64 --self-contained `
+            -p:PublishSingleFile=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=$env:VERSION `
+            -o ./publish/portable
+          Move-Item ./publish/portable/OpenTDBLookup.exe ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64-selfcontained.exe
+
+      - name: Sign slim binary
+        env:
+          OPENTDB_CODESIGN_PFX_B64: ${{ secrets.CODESIGN_PFX_B64 }}
+          OPENTDB_CODESIGN_PASSWORD: ${{ secrets.CODESIGN_PASSWORD }}
+        run: pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64.exe
+
+      - name: Sign portable binary
+        env:
+          OPENTDB_CODESIGN_PFX_B64: ${{ secrets.CODESIGN_PFX_B64 }}
+          OPENTDB_CODESIGN_PASSWORD: ${{ secrets.CODESIGN_PASSWORD }}
+        run: pwsh ./scripts/Sign-Binary.ps1 -Path ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64-selfcontained.exe
+
+      - name: Generate checksums
+        run: |
+          Get-ChildItem ./publish/*.exe | ForEach-Object {
+            $hash = Get-FileHash $_.FullName -Algorithm SHA256
+            "$($hash.Hash.ToLower())  $($_.Name)" | Out-File -Append -Encoding ascii ./publish/SHA256SUMS.txt
+          }
+          Get-Content ./publish/SHA256SUMS.txt
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4.6.1
+        with:
+          name: OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64
+          path: |
+            ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64.exe
+            ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64-selfcontained.exe
+            ./publish/SHA256SUMS.txt
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - tag
+      - build
+    if: needs.tag.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64
+          path: ./publish
+
+      - name: Create GitHub Release
+        # SHA-pinned third-party action; Dependabot updates with cooldown.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ needs.tag.outputs.version_tag }}
+          name: ${{ needs.tag.outputs.version_tag }}
+          generate_release_notes: true
+          files: |
+            ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64.exe
+            ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64-selfcontained.exe
+            ./publish/SHA256SUMS.txt

@@ -1,0 +1,156 @@
+# Fast-forward the release branch when a reviewer approves the main -> release PR.
+# No merge commit, no rebase - the exact SHA from main moves to release intact.
+name: Auto Fast-Forward Approval
+
+on:
+  pull_request_review:
+    types:
+      - submitted
+  pull_request:
+    types:
+      - labeled
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+        description: 'Target Pull Request Number (e.g., 42)'
+
+jobs:
+  merge:
+    name: Execute Fast-Forward Push
+    runs-on: ubuntu-latest
+    # Without this gate, every issue comment in the repo would spin a runner.
+    if: |
+      github.event_name != 'issue_comment' ||
+      (github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/approve'))
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      target_sha: ${{ steps.validate.outputs.validated_sha }}
+    steps:
+      - name: Verify Reviewer Permission
+        id: verify_reviewer
+        if: github.event_name == 'pull_request_review' && github.event.review.state == 'approved'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVIEW_AUTHOR: ${{ github.event.review.user.login }}
+        run: |
+          # Anyone with read access can submit an "approved" review; the state
+          # alone is not authorization. Gate on the reviewer's repo permission.
+          # Fails closed on lookup error.
+          PERMISSION=$(gh api "repos/${{ github.repository }}/collaborators/$REVIEW_AUTHOR/permission" --jq '.permission' 2>/dev/null || echo "none")
+          echo "Reviewer '$REVIEW_AUTHOR' has permission '$PERMISSION'."
+          case "$PERMISSION" in
+            admin|maintain|write) echo "authorized=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Insufficient permission. Halting." ;;
+          esac
+
+      - name: Extract Review Event Data
+        id: review_data
+        if: github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && steps.verify_reviewer.outputs.authorized == 'true'
+        run: |
+          echo "TARGET_SHA=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          echo "BASE_REF=${{ github.event.pull_request.base.ref }}" >> "$GITHUB_OUTPUT"
+          echo "HEAD_REF=${{ github.event.pull_request.head.ref }}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Label Actor Permission
+        id: verify_labeler
+        if: github.event_name == 'pull_request' && github.event.label.name == 'status/approved'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LABEL_ACTOR: ${{ github.event.sender.login }}
+        run: |
+          # Triage role can apply labels but must NOT trigger a release.
+          # Gate on the label-applier's repo permission. Fails closed on lookup error.
+          PERMISSION=$(gh api "repos/${{ github.repository }}/collaborators/$LABEL_ACTOR/permission" --jq '.permission' 2>/dev/null || echo "none")
+          echo "Label actor '$LABEL_ACTOR' has permission '$PERMISSION'."
+          case "$PERMISSION" in
+            admin|maintain|write) echo "authorized=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Insufficient permission. Halting." ;;
+          esac
+
+      - name: Extract Label Event Data
+        id: label_data
+        if: github.event_name == 'pull_request' && github.event.label.name == 'status/approved' && steps.verify_labeler.outputs.authorized == 'true'
+        run: |
+          echo "TARGET_SHA=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          echo "BASE_REF=${{ github.event.pull_request.base.ref }}" >> "$GITHUB_OUTPUT"
+          echo "HEAD_REF=${{ github.event.pull_request.head.ref }}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Comment Author Permission
+        id: verify_commenter
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_USER: ${{ github.event.comment.user.login }}
+        run: |
+          # Only write/maintain/admin can trigger the fast-forward via /approve.
+          # Fall back to "none" so the gate fails closed if the lookup errors.
+          PERMISSION=$(gh api "repos/${{ github.repository }}/collaborators/$COMMENT_USER/permission" --jq '.permission' 2>/dev/null || echo "none")
+          echo "Commenter '$COMMENT_USER' has permission '$PERMISSION'."
+          case "$PERMISSION" in
+            admin|maintain|write) echo "authorized=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Insufficient permission. Halting." ;;
+          esac
+
+      - name: Extract Comment Command Data
+        id: comment_data
+        if: github.event_name == 'issue_comment' && steps.verify_commenter.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ github.event.issue.number }}
+        run: |
+          PR_JSON=$(gh pr view "$PR_NUM" --repo "${{ github.repository }}" --json headRefOid,baseRefName,headRefName)
+          echo "TARGET_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')" >> "$GITHUB_OUTPUT"
+          echo "BASE_REF=$(echo "$PR_JSON" | jq -r '.baseRefName')" >> "$GITHUB_OUTPUT"
+          echo "HEAD_REF=$(echo "$PR_JSON" | jq -r '.headRefName')" >> "$GITHUB_OUTPUT"
+
+      - name: Extract Manual Dispatch Data
+        id: dispatch_data
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUM="${{ inputs.pr_number }}"
+          PR_JSON=$(gh pr view "$PR_NUM" --repo "${{ github.repository }}" --json headRefOid,baseRefName,headRefName)
+          echo "TARGET_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')" >> "$GITHUB_OUTPUT"
+          echo "BASE_REF=$(echo "$PR_JSON" | jq -r '.baseRefName')" >> "$GITHUB_OUTPUT"
+          echo "HEAD_REF=$(echo "$PR_JSON" | jq -r '.headRefName')" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Branch Constraints
+        id: validate
+        env:
+          TARGET_SHA: ${{ steps.review_data.outputs.TARGET_SHA || steps.label_data.outputs.TARGET_SHA || steps.comment_data.outputs.TARGET_SHA || steps.dispatch_data.outputs.TARGET_SHA }}
+          BASE_REF: ${{ steps.review_data.outputs.BASE_REF || steps.label_data.outputs.BASE_REF || steps.comment_data.outputs.BASE_REF || steps.dispatch_data.outputs.BASE_REF }}
+          HEAD_REF: ${{ steps.review_data.outputs.HEAD_REF || steps.label_data.outputs.HEAD_REF || steps.comment_data.outputs.HEAD_REF || steps.dispatch_data.outputs.HEAD_REF }}
+        run: |
+          if [ -z "$TARGET_SHA" ]; then
+            echo "Trigger condition not met. Halting execution."
+            exit 0
+          fi
+
+          if [ "$BASE_REF" != "release" ] || [ "$HEAD_REF" != "main" ]; then
+            echo "Invalid routing: $HEAD_REF -> $BASE_REF. Must be main -> release. Halting."
+            exit 0
+          fi
+
+          echo "validated_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        if: steps.validate.outputs.validated_sha != ''
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT }}
+
+      - name: Fast-forward release branch
+        if: steps.validate.outputs.validated_sha != ''
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        run: |
+          git push origin ${{ steps.validate.outputs.validated_sha }}:refs/heads/release

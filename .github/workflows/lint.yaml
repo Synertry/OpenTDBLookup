@@ -1,0 +1,50 @@
+name: Lint
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: false
+        type: string
+        description: "Git ref to checkout (optional, defaults to current commit)"
+
+jobs:
+  lint:
+    name: Lint C# code
+    runs-on: ubuntu-latest # format + analyzers run cross-platform; faster than windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5.0.5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore (locked mode)
+        # --locked-mode forbids changes to packages.lock.json mid-restore.
+        # Any drift means someone changed a dependency without committing the lockfile.
+        run: dotnet restore --locked-mode
+
+      - name: Verify formatting (.editorconfig + style analyzers)
+        # --verify-no-changes exits non-zero on any diff.
+        # --severity error scopes to error-level rules only (warnings stay warnings
+        #  until we deliberately bump them; keeps the gate from flooding day one).
+        run: dotnet format --verify-no-changes --severity error --no-restore
+
+      - name: Build (with analyzers)
+        # Build runs Roslynator + NetAnalyzers (CA*) + EnforceCodeStyleInBuild.
+        # Warnings still flow but don't fail the lint gate; the format step above does.
+        run: dotnet build -c Release --no-restore

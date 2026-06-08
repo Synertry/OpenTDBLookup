@@ -1,0 +1,72 @@
+name: Test
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+        description: "Runner OS (windows-latest required for Avalonia win-x64 publish; ubuntu-latest works for non-publish tests)"
+      dotnet-version:
+        required: false
+        type: string
+        default: '10.0.x'
+        description: "Specific .NET SDK version"
+      ref:
+        required: false
+        type: string
+        description: "Git ref to checkout"
+
+jobs:
+  test:
+    name: Test C# code on ${{ inputs.os }} @ .NET ${{ inputs.dotnet-version }}
+    runs-on: ${{ inputs.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh # PowerShell 7 is preinstalled on every GH runner; matches local dev shell
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup .NET ${{ inputs.dotnet-version }}
+        uses: actions/setup-dotnet@v5.0.0
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Cache NuGet packages
+        id: cache-nuget
+        uses: actions/cache@v5.0.5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Display .NET version
+        run: dotnet --info
+
+      - name: Restore (locked mode)
+        run: dotnet restore --locked-mode
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Test with coverage
+        # coverlet.collector (already in the test csproj) responds to "XPlat Code Coverage"
+        # and emits coverage.cobertura.xml. --results-directory keeps the output deterministic.
+        run: >
+          dotnet test -c Release --no-build --verbosity normal
+          --collect:"XPlat Code Coverage"
+          --results-directory ./coverage
+
+      - name: Upload coverage report
+        if: always() # upload even when tests fail so we can diagnose
+        uses: actions/upload-artifact@v4.6.1
+        with:
+          name: coverage-${{ inputs.os }}-${{ inputs.dotnet-version }}-${{ github.run_id }}
+          path: coverage/**/coverage.cobertura.xml
+          retention-days: 14

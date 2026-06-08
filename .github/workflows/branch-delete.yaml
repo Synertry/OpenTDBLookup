@@ -1,0 +1,32 @@
+# GitHub's built-in "delete head branch on merge" lacks a protect-list, so a
+# misconfigured PR can delete main/release. This handles it safely.
+name: Delete Merged Branch
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  delete-branch:
+    name: Delete merged PR branch
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    steps:
+      - name: Delete Branch Safely
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          PROTECTED_BRANCHES=("main" "release")
+
+          if [[ " ${PROTECTED_BRANCHES[*]} " =~ " ${HEAD_REF} " ]]; then
+            echo "Protected branch '${HEAD_REF}' detected. Skipping deletion."
+            exit 0
+          fi
+
+          echo "Deleting merged branch '${HEAD_REF}'..."
+          gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/${HEAD_REF}" || true
+          echo "Branch deleted"
