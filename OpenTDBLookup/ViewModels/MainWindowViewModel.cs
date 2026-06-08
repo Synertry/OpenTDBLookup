@@ -1,10 +1,5 @@
-using System;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Reflection;
-using System.Threading;
-using System.Threading.Tasks;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -20,7 +15,7 @@ namespace OpenTDBLookup.ViewModels;
 /// Drives the main window: input box, search result, refresh status,
 /// clipboard-watch toggle, and the optional initial-scrape dialog hand-off.
 /// </summary>
-public partial class MainWindowViewModel : ViewModelBase, IDisposable
+public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
 {
     private static readonly TimeSpan SearchDebounce = TimeSpan.FromMilliseconds(100);
 
@@ -83,7 +78,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private bool _showNoMatch;
 
     [ObservableProperty]
-    private string _appVersion = "0.1.0";
+    private string _appVersion = "0.0.0-dev";
 
     public MainWindowViewModel(
         IQuestionRepository repository,
@@ -104,7 +99,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         AppVersion = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-            ?? "0.1.0";
+            ?? "0.0.0-dev";
     }
 
     /// <summary>

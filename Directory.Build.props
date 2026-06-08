@@ -1,0 +1,41 @@
+<Project>
+
+  <!-- Shared across all projects in this repo -->
+  <PropertyGroup>
+    <!-- 0.0.0-dev is the local-dev default. The release workflow injects
+         /p:Version=<tag> at build time so what ships matches the git tag. -->
+    <Version>0.0.0-dev</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Enforce .editorconfig style rules during build, not just in the IDE. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Lock the NuGet dependency graph so CI cache keys are deterministic
+         and dependency-review-action can audit what actually got installed. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+    <!-- The .NET SDK ships Microsoft.CodeAnalysis.NetAnalyzers - flip on the
+         "recommended" tier instead of the default "minimum". -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+  </PropertyGroup>
+
+  <!-- Extra analyzers for every project. -->
+  <ItemGroup>
+    <PackageReference Include="Roslynator.Analyzers" Version="4.13.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Roslyn needs GenerateDocumentationFile=true on every project to enable
+       IDE0005 (unused usings removal) during build. Suppress CS1591 since we
+       don't enforce XML docs on public members repo-wide. -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

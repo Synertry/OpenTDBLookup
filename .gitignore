@@ -13,9 +13,12 @@ publish/
 *.user
 *.suo
 *.userprefs
-*.lock.json
 *.cache
 *.swp
+# NuGet packages.lock.json files MUST be committed - CI uses them for
+# the cache key + dotnet restore --locked-mode. Older .NET tooling
+# bundled them under `*.lock.json` ignores; modern tooling keeps them.
+!**/packages.lock.json
 
 # --- ReSharper / Resharper ---
 _ReSharper*/
@@ -68,3 +71,6 @@ $RECYCLE.BIN/
 # --- Local environment overrides for the signing script and similar ---
 .env
 .env.local
+
+# --- Personal notes (kept local; never published) ---
+notes/

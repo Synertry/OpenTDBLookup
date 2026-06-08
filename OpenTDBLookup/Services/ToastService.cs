@@ -1,4 +1,3 @@
-using System;
 using Avalonia;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;

@@ -1,5 +1,3 @@
-using System;
-
 namespace OpenTDBLookup.Services;
 
 /// <summary>

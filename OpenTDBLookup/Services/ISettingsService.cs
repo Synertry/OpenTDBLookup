@@ -1,5 +1,3 @@
-using System.Threading;
-using System.Threading.Tasks;
 using OpenTDBLookup.Models;
 
 namespace OpenTDBLookup.Services;

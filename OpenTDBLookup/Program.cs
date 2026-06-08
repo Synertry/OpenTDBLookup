@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using Avalonia;
 using Serilog;
 using Serilog.Events;

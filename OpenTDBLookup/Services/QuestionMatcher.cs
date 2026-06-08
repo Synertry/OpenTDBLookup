@@ -1,4 +1,3 @@
-using System;
 using OpenTDBLookup.Helpers;
 using OpenTDBLookup.Models;
 
