@@ -1,0 +1,73 @@
+# Posts a Discord embed when a GitHub Release is published.
+# Fires after release.yaml's softprops/action-gh-release step completes.
+# Skips cleanly when DISCORD_WEBHOOK_URL is not set.
+name: Release Notification
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  discord:
+    name: Send Discord Notification
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Get Release Details
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Read by explicit tag - safer than the no-arg form when multiple
+          # releases publish close together.
+          gh release view ${{ github.event.release.tag_name }} \
+            --repo ${{ github.repository }} \
+            --json tagName,url,body > release.json
+
+      - name: Send Discord Notification
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "::notice::DISCORD_WEBHOOK_URL secret not set; skipping notification."
+            exit 0
+          fi
+
+          TAG=$(jq -r .tagName release.json)
+          URL=$(jq -r .url release.json)
+          NOTES=$(jq -r .body release.json)
+
+          # Discord embed description cap is 4096; keep headroom for the trailer.
+          NOTES_TRUNCATED=${NOTES:0:1800}
+          if [ ${#NOTES} -gt 1800 ]; then
+            NOTES_TRUNCATED="${NOTES_TRUNCATED}\n\n*(Full changelog truncated; see the release page.)*"
+          fi
+
+          # jq handles all the escaping (quotes, newlines, unicode).
+          jq -n \
+            --arg title "OpenTDBLookup $TAG released" \
+            --arg desc "$NOTES_TRUNCATED" \
+            --arg url "$URL" \
+            --arg verify "Verify any downloaded binary: \`gh attestation verify <binary> --owner ${{ github.repository_owner }}\`" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              username: "OpenTDBLookup Releases",
+              embeds: [{
+                title: $title,
+                description: $desc,
+                url: $url,
+                color: 5763719,
+                timestamp: $timestamp,
+                fields: [
+                  { name: "Integrity", value: $verify, inline: false }
+                ],
+                footer: { text: "Published via GitHub Actions" }
+              }]
+            }' > payload.json
+
+          # --fail turns 4xx/5xx into a red step instead of silent success.
+          curl -sS -H "Content-Type: application/json" \
+               --fail \
+               -d @payload.json \
+               "$WEBHOOK"
