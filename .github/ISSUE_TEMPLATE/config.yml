@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: General Question / Discussion
+    url: https://github.com/Synertry/OpenTDBLookup/discussions
+    about: Ask a question or start a discussion. Use Issues for confirmed bugs and concrete feature requests.
+  - name: Security Vulnerability
+    url: https://github.com/Synertry/OpenTDBLookup/security/advisories/new
+    about: Privately report a security issue. Please do NOT file a public issue for security vulnerabilities.

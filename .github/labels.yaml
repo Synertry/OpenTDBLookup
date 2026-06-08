@@ -1,0 +1,119 @@
+# Config Files
+'area/config':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.gitignore'
+          - '.editorconfig'
+          - '.gitattributes'
+          - '.env.example'
+          - 'Directory.Build.props'
+          - 'Directory.Packages.props'
+
+# IDEs and editors
+'area/IDE':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.vscode/**/*'
+          - '.idea/**/*'
+          - '.vs/**/*'
+
+# GitHub Workflows and meta
+'area/CI':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/CODEOWNERS'
+          - '.github/workflows/**/*.yaml'
+          - '.github/workflows/**/*.yml'
+          - '.github/dependabot.yaml'
+          - '.github/labels.yaml'
+          - '.github/pull-request-size.yaml'
+
+# NuGet dependencies
+'area/deps':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/packages.lock.json'
+          - '**/*.csproj'
+          - 'Directory.Build.props'
+          - 'Directory.Packages.props'
+
+# Source code (C# excluding tests)
+'area/source':
+  - changed-files:
+      - all-globs-to-any-file:
+          - '**/*.cs'
+          - '!**/*Tests*.cs'
+          - '!**/*.Tests/**/*'
+
+# XAML / UI markup
+'area/ui':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.axaml'
+          - '**/*.axaml.cs'
+          - '**/*.xaml'
+
+# Tests
+'area/tests':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.Tests/**/*'
+          - '**/*Tests.cs'
+
+# Build / signing scripts
+'area/scripts':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'scripts/**/*'
+
+# Documentation
+'area/docs':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/README.md'
+          - '**/CONTRIBUTING.md'
+          - '**/CODE_OF_CONDUCT.md'
+          - '**/SECURITY.md'
+          - '.github/copilot-instructions.md'
+
+# License
+'area/license':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'LICENSE'
+
+
+# Labels based on commit messages / branch prefixes
+
+'type/build':
+  - head-branch: '^build'
+
+'type/chore':
+  - head-branch: '^chore'
+
+'type/ci':
+  - head-branch: '^ci'
+
+'type/docs':
+  - head-branch: '^docs'
+
+'type/feat':
+  - head-branch: '^feat'
+
+'type/fix':
+  - head-branch: '^fix'
+
+'type/perf':
+  - head-branch: '^perf'
+
+'type/refactor':
+  - head-branch: '^refactor'
+
+'type/revert':
+  - head-branch: '^revert'
+
+'type/style':
+  - head-branch: '^style'
+
+'type/test':
+  - head-branch: '^test'

@@ -1,0 +1,79 @@
+# Dependabot configuration.
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot-yml-file
+version: 2
+updates:
+  # NuGet packages across both csproj files (Directory.Build.props + each project).
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: daily
+      time: '19:00'
+      timezone: Europe/Berlin
+    target-branch: 'main'
+    rebase-strategy: 'auto'
+    open-pull-requests-limit: 10
+    # Cooldown to let releases bake before we pull them in (mitigates supply-chain
+    # incidents like the March 2026 axios compromise where a freshly-published
+    # version carried malicious code).
+    cooldown:
+      default-days: 5
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    labels:
+      - 'workflow/dependabot'
+      - 'workflow/auto-pr'
+      - 'area/deps'
+    assignees:
+      - Synertry
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+    groups:
+      avalonia:
+        # Avalonia version bumps must move in lockstep across all 4 packages.
+        patterns:
+          - 'Avalonia*'
+      microsoft-extensions:
+        patterns:
+          - 'Microsoft.Extensions.*'
+      serilog:
+        patterns:
+          - 'Serilog*'
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+      time: '19:00'
+      timezone: Europe/Berlin
+    target-branch: 'main'
+    rebase-strategy: 'auto'
+    open-pull-requests-limit: 10
+    # github-actions ecosystem only accepts default-days (the semver-*-days
+    # keys are rejected by Dependabot's parser because action tags aren't
+    # strict semver).
+    cooldown:
+      default-days: 5
+    labels:
+      - 'workflow/dependabot'
+      - 'workflow/auto-pr'
+      - 'area/CI'
+    assignees:
+      - Synertry
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
