@@ -121,7 +121,7 @@ jobs:
       # languages. C# is autobuild-friendly but we use our own restored build
       # for reproducibility.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.36.1
+        uses: github/codeql-action/init@v4.36.2
         with:
           languages: csharp
           build-mode: manual
@@ -130,7 +130,7 @@ jobs:
         run: dotnet build -c Release --no-restore
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.36.1
+        uses: github/codeql-action/analyze@v4.36.2
 
       - name: Dependency Review
         # Compares the dep graph on main vs release. Runs on every push to main
