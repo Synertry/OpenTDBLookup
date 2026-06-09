@@ -19,7 +19,7 @@ Please include:
 
 - A short description of the issue.
 - Steps to reproduce (or a proof-of-concept).
-- The OpenTDBLookup version (visible in the app footer or via the `--version` flag once it lands).
+- The OpenTDBLookup version (visible in the app footer, or via `OpenTDBLookup.exe --version`).
 - Any relevant log excerpt from `logs/opentdb-YYYY-MM-DD.log`.
 
 I aim to acknowledge within **72 hours** and to ship a fix within **14 days** for high-severity issues. Low-severity issues may be batched into a regular release.

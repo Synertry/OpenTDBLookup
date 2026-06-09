@@ -13,6 +13,7 @@ OpenTDBLookup is a small Windows desktop app that maintains a local cache of eve
 - **Tray icon.** Optional minimize-to-tray with quick toggle of the clipboard watcher.
 - **Hotkeys.** `Ctrl+L` focus input, `Ctrl+Enter` copy answer, `Ctrl+R` refresh, `Esc` clear.
 - **Dark theme by default.**
+- **CLI**: `OpenTDBLookup.exe --version` (or `-v`) prints the binary's version and exits, useful when filing bug reports or scripting against a released artifact.
 
 ## Quick start
 
