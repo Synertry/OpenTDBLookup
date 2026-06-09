@@ -1,6 +1,14 @@
-# Posts a Discord embed when a GitHub Release is published.
-# Fires after release.yaml's softprops/action-gh-release step completes.
-# Skips cleanly when DISCORD_WEBHOOK_URL is not set.
+# Posts a Discord embed when a GitHub Release is published. When the relay
+# secrets (DISCORD_RELAY_AUTH_KEY + DISCORD_RELAY_CUSTOM_DOMAIN) are set, the
+# embed is posted via cf-discord-relay first with fallback to the direct
+# Discord webhook on relay failure. Skips cleanly when DISCORD_WEBHOOK_URL
+# itself is unset.
+#
+# Discord embed character limits
+# (https://discord.com/developers/docs/resources/message#embed-object-embed-limits):
+#   title <= 256, description <= 4096, field value <= 1024, total <= 6000.
+# We truncate proactively so a long release-note body cannot cause Discord to
+# reject the payload.
 name: Release Notification
 
 on:
@@ -12,6 +20,7 @@ jobs:
   discord:
     name: Send Discord Notification
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     permissions:
       contents: read
     steps:
@@ -21,40 +30,52 @@ jobs:
           TAG_NAME: ${{ github.event.release.tag_name }}
           REPO: ${{ github.repository }}
         run: |
-          # Read by explicit tag - safer than the no-arg form when multiple
-          # releases publish close together. Tag + repo go through env vars
-          # rather than direct ${{ }} interpolation so a crafted tag string
-          # (e.g. one with shell metacharacters) cannot inject into the run
-          # script. Defense-in-depth; PaulHatch/semantic-version produces
-          # tame tags today but the pattern should be uniform.
+          # Inputs flow through env: rather than direct ${{ }} interpolation
+          # so a crafted tag string (e.g. one with shell metacharacters)
+          # cannot inject into the run script. Defense-in-depth.
           gh release view "$TAG_NAME" --repo "$REPO" --json tagName,url,body > release.json
 
       - name: Send Discord Notification
         env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_RELAY_AUTH_KEY: ${{ secrets.DISCORD_RELAY_AUTH_KEY }}
+          DISCORD_RELAY_CUSTOM_DOMAIN: ${{ secrets.DISCORD_RELAY_CUSTOM_DOMAIN }}
           OWNER: ${{ github.repository_owner }}
         run: |
-          if [ -z "$WEBHOOK" ]; then
+          set -euo pipefail
+
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
             echo "::notice::DISCORD_WEBHOOK_URL secret not set; skipping notification."
             exit 0
           fi
+
+          # Hard-cap a string to a maximum byte length, appending "..." when
+          # truncated. UTF-8-safe for ASCII inputs; release notes + tags are.
+          truncate_str() {
+            local str="$1"
+            local max="$2"
+            if [ "${#str}" -gt "$max" ]; then
+              printf '%s...' "${str:0:$((max-3))}"
+            else
+              printf '%s' "$str"
+            fi
+          }
 
           TAG=$(jq -r .tagName release.json)
           URL=$(jq -r .url release.json)
           NOTES=$(jq -r .body release.json)
 
-          # Discord embed description cap is 4096; keep headroom for the trailer.
-          NOTES_TRUNCATED=${NOTES:0:1800}
-          if [ ${#NOTES} -gt 1800 ]; then
-            NOTES_TRUNCATED="${NOTES_TRUNCATED}\n\n*(Full changelog truncated; see the release page.)*"
-          fi
+          TITLE=$(truncate_str "OpenTDBLookup $TAG released" 256)
+          DESC=$(truncate_str "$NOTES" 4096)
+          VERIFY=$(truncate_str "\`gh attestation verify <binary> --owner $OWNER\`" 1024)
 
-          # jq handles all the escaping (quotes, newlines, unicode).
+          # jq handles all the escaping (quotes, newlines, unicode) regardless
+          # of what came in from the release body.
           jq -n \
-            --arg title "OpenTDBLookup $TAG released" \
-            --arg desc "$NOTES_TRUNCATED" \
+            --arg title "$TITLE" \
+            --arg desc "$DESC" \
             --arg url "$URL" \
-            --arg verify "Verify any downloaded binary: \`gh attestation verify <binary> --owner $OWNER\`" \
+            --arg verify "$VERIFY" \
             --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{
               username: "OpenTDBLookup Releases",
@@ -65,14 +86,39 @@ jobs:
                 color: 5763719,
                 timestamp: $timestamp,
                 fields: [
-                  { name: "Integrity", value: $verify, inline: false }
+                  { name: "Verify integrity", value: $verify, inline: false }
                 ],
                 footer: { text: "Published via GitHub Actions" }
               }]
             }' > payload.json
 
-          # --fail turns 4xx/5xx into a red step instead of silent success.
-          curl -sS -H "Content-Type: application/json" \
-               --fail \
+          # Relay path: try cf-discord-relay first when both DISCORD_RELAY_*
+          # secrets are configured. Synthesize the relay URL by stripping the
+          # Discord host + /api/ prefix from the webhook URL; the relay re-adds
+          # /api/v10/. URL contains the webhook token, so we capture status
+          # only and never echo URL or response body to keep logs clean.
+          if [ -n "${DISCORD_RELAY_AUTH_KEY:-}" ] && [ -n "${DISCORD_RELAY_CUSTOM_DOMAIN:-}" ]; then
+            WEBHOOK_PATH="${DISCORD_WEBHOOK_URL#*api/}"
+            RELAY_URL="https://${DISCORD_RELAY_CUSTOM_DOMAIN}/${WEBHOOK_PATH}"
+
+            HTTP_STATUS=$(curl --silent --max-time 15 \
+                              -o /dev/null -w '%{http_code}' \
+                              -H "Content-Type: application/json" \
+                              -H "x-auth-key: ${DISCORD_RELAY_AUTH_KEY}" \
+                              -d @payload.json \
+                              "${RELAY_URL}")
+
+            if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+              echo "Posted via cf-discord-relay (HTTP ${HTTP_STATUS})."
+              exit 0
+            fi
+            echo "Relay returned HTTP ${HTTP_STATUS}; falling back to direct Discord webhook."
+          fi
+
+          # Fallback: post straight to Discord. --fail-with-body surfaces the
+          # exact error if Discord rejects the payload so observability gaps
+          # surface in the Actions UI instead of silently going missing.
+          curl --fail-with-body --show-error --silent \
+               -H "Content-Type: application/json" \
                -d @payload.json \
-               "$WEBHOOK"
+               "$DISCORD_WEBHOOK_URL"
