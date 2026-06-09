@@ -216,8 +216,13 @@ jobs:
           path: ./publish
 
       - name: Create GitHub Release
+        # Use PAT instead of the default GITHUB_TOKEN so the release.published
+        # event actually cascades. GitHub Actions has a guardrail: events
+        # triggered by GITHUB_TOKEN do NOT fire downstream workflows (loop
+        # protection). Without this, notify.yaml never runs.
         uses: softprops/action-gh-release@v3.0.0
         with:
+          token: ${{ secrets.PAT }}
           tag_name: ${{ needs.tag.outputs.version_tag }}
           name: ${{ needs.tag.outputs.version_tag }}
           generate_release_notes: true
