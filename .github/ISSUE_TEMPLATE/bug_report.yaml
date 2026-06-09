@@ -14,8 +14,8 @@ body:
     id: version
     attributes:
       label: OpenTDBLookup version
-      description: Visible in the app's window footer (`v0.x.y`). For pre-release builds, paste the `git rev-parse --short HEAD` you built from.
-      placeholder: "v0.6.1"
+      description: Visible in the app's window footer (`v0.x.y`) or via `OpenTDBLookup.exe --version`. For pre-release builds, paste the `git rev-parse --short HEAD` you built from.
+      placeholder: "v0.0.1"
     validations:
       required: true
 
