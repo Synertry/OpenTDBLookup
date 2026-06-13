@@ -7,7 +7,6 @@
           - '.gitattributes'
           - '.env.example'
           - 'Directory.Build.props'
-          - 'Directory.Packages.props'
 
 # IDEs and editors
 'area/IDE':
@@ -34,7 +33,6 @@
       - any-glob-to-any-file:
           - '**/packages.lock.json'
           - '**/*.csproj'
-          - 'Directory.Build.props'
           - 'Directory.Packages.props'
 
 # Source code (C# excluding tests)
@@ -53,12 +51,13 @@
           - '**/*.axaml.cs'
           - '**/*.xaml'
 
-# Tests
+# Tests. Dependency-only bumps to the test project stay in area/deps.
 'area/tests':
   - changed-files:
-      - any-glob-to-any-file:
+      - all-globs-to-any-file:
           - '**/*.Tests/**/*'
-          - '**/*Tests.cs'
+          - '!**/*.csproj'
+          - '!**/packages.lock.json'
 
 # Build / signing scripts
 'area/scripts':
@@ -85,35 +84,35 @@
 
 # Labels based on commit messages / branch prefixes
 
-'type/build':
+'type/build': # Changes that affect the build system or external dependencies
   - head-branch: '^build'
 
-'type/chore':
-  - head-branch: '^chore'
+'type/chore': # Maintenance tasks that don't modify source or test files
+  - head-branch: ['^chore', '^dependabot']
 
-'type/ci':
+'type/ci': # Changes to CI configuration files and scripts
   - head-branch: '^ci'
 
-'type/docs':
+'type/docs': # Documentation-only changes
   - head-branch: '^docs'
 
-'type/feat':
+'type/feat': # A new feature
   - head-branch: '^feat'
 
-'type/fix':
+'type/fix': # A bug fix
   - head-branch: '^fix'
 
-'type/perf':
+'type/perf': # A code change that improves performance
   - head-branch: '^perf'
 
-'type/refactor':
+'type/refactor': # A code change that neither fixes a bug nor adds a feature
   - head-branch: '^refactor'
 
-'type/revert':
+'type/revert': # Reverts a previous commit
   - head-branch: '^revert'
 
-'type/style':
+'type/style': # Whitespace and formatting changes that do not alter semantics
   - head-branch: '^style'
 
-'type/test':
+'type/test': # Adding missing tests or correcting existing tests
   - head-branch: '^test'
