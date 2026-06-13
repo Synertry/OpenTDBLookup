@@ -88,7 +88,7 @@
   - head-branch: '^build'
 
 'type/chore': # Maintenance tasks that don't modify source or test files
-  - head-branch: ['^chore', '^dependabot']
+  - head-branch: '^chore'
 
 'type/ci': # Changes to CI configuration files and scripts
   - head-branch: '^ci'
