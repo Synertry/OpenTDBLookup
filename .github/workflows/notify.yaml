@@ -30,7 +30,7 @@ jobs:
           TAG_NAME: ${{ github.event.release.tag_name }}
           REPO: ${{ github.repository }}
         run: |
-          # Inputs flow through env: rather than direct ${{ }} interpolation
+          # Inputs flow through env, not direct expression interpolation,
           # so a crafted tag string (e.g. one with shell metacharacters)
           # cannot inject into the run script. Defense-in-depth.
           gh release view "$TAG_NAME" --repo "$REPO" --json tagName,url,body > release.json
