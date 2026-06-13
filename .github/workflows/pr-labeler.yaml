@@ -18,6 +18,10 @@ jobs:
   triage:
     name: Triage PR
     runs-on: ubuntu-latest
+    # Dependabot stamps its own labels (area/*, type/chore, workflow/*) via
+    # dependabot.yaml. Skip the labeler for bot PRs so sync-labels does not
+    # strip those labels back off.
+    if: ${{ github.actor != 'dependabot[bot]' }}
     steps:
       - uses: actions/labeler@v6.1.0
         with:
@@ -29,6 +33,8 @@ jobs:
     name: Label the PR size
     runs-on: ubuntu-latest
     needs: triage
+    # Still run when triage is skipped on Dependabot PRs so size labels apply.
+    if: ${{ !cancelled() }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6.0.3
