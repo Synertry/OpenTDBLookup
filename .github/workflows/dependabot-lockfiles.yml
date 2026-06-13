@@ -1,0 +1,97 @@
+# Keeps every packages.lock.json consistent on Dependabot PRs. Dependabot
+# regenerates only the directly-referencing project's lock on a NuGet bump, so
+# the test project's CentralTransitive entries go stale and locked-mode restore
+# fails (NU1004, see dependabot/dependabot-core#13950). This job restores the
+# whole solution to refresh every lock, then commits the result back to the PR
+# through the GitHub API. The API commit is GitHub-signed (satisfies the
+# required_signatures rule) and, because it is authored by the PAT rather than
+# GITHUB_TOKEN, it re-triggers the normal PR checks that run the locked-mode
+# restore, build, and tests.
+name: Dependabot Lockfiles
+
+on:
+  pull_request:
+    branches:
+      - main
+
+# Least privilege. The job itself only reads. The write happens through the PAT
+# via the API, never through GITHUB_TOKEN (a GITHUB_TOKEN commit would not
+# re-trigger the PR checks).
+permissions:
+  contents: read
+
+jobs:
+  sync-locks:
+    name: Sync NuGet lock files
+    runs-on: ubuntu-latest
+    # Only Dependabot PRs hit the lock drift. The API commit below is authored by
+    # the PAT identity, so the follow-up pull_request:synchronize run has a
+    # non-Dependabot actor and skips this gate. No self-trigger loop.
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6.0.3
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5.3.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Regenerate lock files
+        # --force-evaluate re-resolves and rewrites every project's lock,
+        # including the test project's CentralTransitive entries. Restore only.
+        # No build or test runs in this job, so no third-party package code
+        # executes alongside the write-capable PAT.
+        run: dotnet restore --force-evaluate
+
+      - name: Detect changed lock files
+        id: changes
+        run: |
+          if [ -n "$(git diff --name-only -- '**/packages.lock.json')" ]; then
+            echo "Lock files changed, committing the refresh."
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No lock files changed, nothing to do."
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit regenerated locks via API (signed)
+        if: ${{ steps.changes.outputs.any == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+
+          # Build fileChanges.additions: one entry per changed lock, with its
+          # contents base64-encoded and unwrapped. jq escapes paths and content.
+          additions=$(
+            git diff --name-only -- '**/packages.lock.json' | while IFS= read -r path; do
+              [ -n "$path" ] || continue
+              jq -n --arg path "$path" --arg contents "$(base64 -w0 "$path")" \
+                '{path: $path, contents: $contents}'
+            done | jq -s '.'
+          )
+
+          variables=$(jq -n \
+            --arg repo "$REPO" \
+            --arg branch "$BRANCH" \
+            --arg oid "$(git rev-parse HEAD)" \
+            --argjson additions "$additions" \
+            '{
+              input: {
+                branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                expectedHeadOid: $oid,
+                message: { headline: "chore(deps): regenerate NuGet lock files" },
+                fileChanges: { additions: $additions }
+              }
+            }')
+
+          jq -n \
+            --arg query "$(cat .github/api/createCommitOnBranch.gql)" \
+            --argjson variables "$variables" \
+            '{query: $query, variables: $variables}' \
+            | gh api graphql --input -
