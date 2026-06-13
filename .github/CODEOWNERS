@@ -1,4 +1,17 @@
 # Each line is a file pattern followed by one or more owners.
-# @Synertry is the default owner; later matches take precedence.
+# Later matches take precedence (last match wins).
+#
+# Ownership is scoped to the application source so routine Dependabot
+# dependency bumps, which only touch the manifests, do not request review.
 
-*       @Synertry
+/OpenTDBLookup/         @Synertry
+/OpenTDBLookup.Tests/   @Synertry
+
+# Dependency manifests are Dependabot-managed. A pattern with no owner clears
+# ownership (last match wins) so version bumps merge without a code-owner
+# review request. Without Central Package Management the versions live inline
+# in each csproj, so both the csproj and its lock file are excluded.
+/OpenTDBLookup/*.csproj
+/OpenTDBLookup/packages.lock.json
+/OpenTDBLookup.Tests/*.csproj
+/OpenTDBLookup.Tests/packages.lock.json
