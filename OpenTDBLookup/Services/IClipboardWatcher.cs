@@ -17,4 +17,11 @@ public interface IClipboardWatcher
 
     /// <summary>Stops polling and clears the last-seen text.</summary>
     void Stop();
+
+    /// <summary>
+    /// Records that <paramref name="text"/> was just written to the clipboard
+    /// by the application itself, so the next poll does not re-emit it as a
+    /// spurious change.
+    /// </summary>
+    void NotifyApplicationWrote(string text);
 }

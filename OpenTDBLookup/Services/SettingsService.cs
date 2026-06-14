@@ -94,15 +94,7 @@ public sealed class SettingsService : ISettingsService
         }
         catch (Exception ex) when (ex is IOException or JsonException)
         {
-            _logger.LogWarning(ex, "Failed to save settings.json");
-        }
-        finally
-        {
-            if (File.Exists(_tempPath))
-            {
-                try { File.Delete(_tempPath); }
-                catch (IOException ioex) { _logger.LogWarning(ioex, "Failed to delete leftover temp settings file at {Path}", _tempPath); }
-            }
+            _logger.LogWarning(ex, "Failed to save settings.json; latest state is retained at {TempPath}", _tempPath);
         }
     }
 }

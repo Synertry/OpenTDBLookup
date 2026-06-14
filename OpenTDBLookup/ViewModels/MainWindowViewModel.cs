@@ -152,7 +152,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Startup initialize failed");
-            StatusMessage = $"Startup failed: {ex.Message}";
+            StatusMessage = "Startup failed. See the log for details.";
         }
     }
 
@@ -242,6 +242,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             {
                 _logger.LogWarning(ex, "Search failed");
             }
+            finally
+            {
+                fresh.Dispose();
+            }
         });
     }
 
@@ -281,7 +285,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Refresh failed");
-            StatusMessage = $"Refresh failed: {ex.Message}";
+            StatusMessage = "Refresh failed. See the log for details.";
         }
         finally
         {
@@ -303,7 +307,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         }
         await clipboard.SetTextAsync(CurrentMatch.CorrectAnswer).ConfigureAwait(true);
         _lastClipboardWriteByApp = CurrentMatch.CorrectAnswer;
-        if (_watcher is ClipboardWatcher cw) { cw.NotifyApplicationWrote(CurrentMatch.CorrectAnswer); }
+        _watcher.NotifyApplicationWrote(CurrentMatch.CorrectAnswer);
         StatusMessage = "Copied answer to clipboard";
     }
 
@@ -365,7 +369,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Initial scrape failed");
-            StatusMessage = $"Initial scrape failed: {ex.Message}";
+            StatusMessage = "Initial scrape failed. See the log for details.";
             throw;
         }
         finally
@@ -418,7 +422,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
             if (clipboard is null) { return; }
             await clipboard.SetTextAsync(match.CorrectAnswer).ConfigureAwait(true);
             _lastClipboardWriteByApp = match.CorrectAnswer;
-            if (_watcher is ClipboardWatcher cw) { cw.NotifyApplicationWrote(match.CorrectAnswer); }
+            _watcher.NotifyApplicationWrote(match.CorrectAnswer);
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 CurrentMatch = match;
@@ -470,74 +474,4 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IDisposable
         _searchCts?.Dispose();
     }
 
-    // ---------------------------------------------------------------------
-    // Design-time stubs - never used at runtime; only the parameterless
-    // constructor for the XAML previewer reaches them.
-    // ---------------------------------------------------------------------
-    private sealed class DesignTimeRepository : IQuestionRepository
-    {
-        public System.Collections.Generic.IReadOnlyDictionary<string, Question> ByHash { get; } = new System.Collections.Generic.Dictionary<string, Question>();
-        public System.Collections.Generic.IReadOnlyList<Question> All { get; } = [];
-        public int Count => 0;
-        public DateTimeOffset? LastFullScrape => null;
-        public DateTimeOffset? LastCountCheck => null;
-        public System.Collections.Generic.IReadOnlyDictionary<int, int> CategoryVerifiedCounts { get; } = new System.Collections.Generic.Dictionary<int, int>();
-        public System.Collections.Generic.IReadOnlyDictionary<string, string> NormalizedQuestionByHash { get; } = new System.Collections.Generic.Dictionary<string, string>();
-        public int KnownDuplicateCount => 0;
-        public System.Collections.Generic.IReadOnlyDictionary<int, int> GetCachedCountsByCategory() => new System.Collections.Generic.Dictionary<int, int>();
-        public System.Collections.Generic.IReadOnlyDictionary<(int CategoryId, string Difficulty), int> GetCachedCountsByCategoryDifficulty() => new System.Collections.Generic.Dictionary<(int, string), int>();
-        public Task LoadAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task SaveAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-        public int Merge(System.Collections.Generic.IEnumerable<Question> incoming) => 0;
-        public void UpdateCategoryCounts(System.Collections.Generic.IReadOnlyDictionary<int, int> verifiedCounts) { }
-        public void RecordKnownDuplicateCount(int count) { }
-        public void MarkFullScrape() { }
-        public void MarkCountCheck() { }
-    }
-
-    private sealed class DesignTimeMatcher : IQuestionMatcher
-    {
-        public Question? Match(string? input) => null;
-        public string? NormalizeForPreview(string? input) => input;
-    }
-
-    private sealed class DesignTimeRefresh : IRefreshService
-    {
-        public Task<RefreshResult> InitialScrapeAsync(IProgress<ScrapeProgress>? progress, CancellationToken cancellationToken)
-            => Task.FromResult(new RefreshResult(0, 0, false, TimeSpan.Zero));
-        public Task<RefreshResult> IncrementalRefreshAsync(IProgress<ScrapeProgress>? progress, CancellationToken cancellationToken)
-            => Task.FromResult(new RefreshResult(0, 0, false, TimeSpan.Zero));
-        public Task<bool> ShouldRefreshAsync() => Task.FromResult(false);
-    }
-
-    private sealed class DesignTimeWatcher : IClipboardWatcher
-    {
-        public event EventHandler<string>? ClipboardChanged
-        {
-            add { _ = value; }
-            remove { _ = value; }
-        }
-        public bool IsRunning => false;
-        public void Start() { }
-        public void Stop() { }
-    }
-
-    private sealed class DesignTimeToast : IToastService
-    {
-        public void Show(string title, string body, TimeSpan? duration = null) { }
-    }
-
-    private sealed class DesignTimeSettings : ISettingsService
-    {
-        public AppSettings Current { get; } = new();
-        public Task LoadAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken) => Task.CompletedTask;
-    }
-
-    private sealed class DesignTimeLogger : ILogger<MainWindowViewModel>
-    {
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => false;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) { }
-    }
 }

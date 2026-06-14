@@ -72,8 +72,8 @@ public sealed class QuestionRepository : IQuestionRepository
     public IReadOnlyDictionary<string, Question> ByHash => _byHashSnapshot;
     public IReadOnlyList<Question> All => _allSnapshot;
     public int Count => _allSnapshot.Count;
-    public DateTimeOffset? LastFullScrape => _lastFullScrape;
-    public DateTimeOffset? LastCountCheck => _lastCountCheck;
+    public DateTimeOffset? LastFullScrape { get { lock (_lock) { return _lastFullScrape; } } }
+    public DateTimeOffset? LastCountCheck { get { lock (_lock) { return _lastCountCheck; } } }
     public IReadOnlyDictionary<int, int> CategoryVerifiedCounts => _countsSnapshot;
     public int KnownDuplicateCount
     {
@@ -153,16 +153,9 @@ public sealed class QuestionRepository : IQuestionRepository
             File.Move(_tempPath, _filePath, overwrite: true);
             _logger.LogDebug("Saved {Count} questions to {Path}", snapshot.Questions.Count, _filePath);
         }
-        finally
+        catch (Exception ex) when (ex is IOException or JsonException)
         {
-            // Best-effort cleanup: if File.Move raised (e.g. cross-volume move
-            // on a non-default install) we still want the half-written .tmp
-            // gone so a subsequent Save sees a clean slate.
-            if (File.Exists(_tempPath))
-            {
-                try { File.Delete(_tempPath); }
-                catch (IOException ioex) { _logger.LogWarning(ioex, "Failed to delete leftover temp file {Path}", _tempPath); }
-            }
+            _logger.LogError(ex, "Failed to save questions.json; latest state is retained at {TempPath}", _tempPath);
         }
     }
 
