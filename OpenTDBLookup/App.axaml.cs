@@ -45,6 +45,7 @@ public partial class App : Application
             {
                 vm.Dispose();
                 _trayIcon?.Dispose();
+                if (Services is IDisposable disposable) { disposable.Dispose(); }
                 Log.CloseAndFlush();
             };
         }
@@ -70,7 +71,7 @@ public partial class App : Application
         // - QuestionMatcher reads from the repository
         // - ClipboardWatcher manages the DispatcherTimer and last-seen text
         // - RefreshService orchestrates client + repo
-        services.AddSingleton<HttpClient>(_ => new HttpClient());
+        services.AddSingleton<HttpClient>(_ => new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }));
         services.AddSingleton<IOpenTdbClient, OpenTdbClient>();
         services.AddSingleton<IQuestionRepository, QuestionRepository>();
         services.AddSingleton<IQuestionMatcher, QuestionMatcher>();

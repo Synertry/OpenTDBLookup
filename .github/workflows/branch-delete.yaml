@@ -18,8 +18,10 @@ jobs:
       - name: Delete Branch Safely
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
+          set -euo pipefail
           PROTECTED_BRANCHES=("main" "release")
 
           if [[ " ${PROTECTED_BRANCHES[*]} " =~ " ${HEAD_REF} " ]]; then
@@ -28,5 +30,13 @@ jobs:
           fi
 
           echo "Deleting merged branch '${HEAD_REF}'..."
-          gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/${HEAD_REF}" || true
-          echo "Branch deleted"
+          # Tolerate a branch that is already gone, but fail on any other error
+          # so a real API/auth/rate-limit failure is not reported as success.
+          if gh api -X DELETE "repos/${REPO}/git/refs/heads/${HEAD_REF}"; then
+            echo "Branch deleted."
+          elif ! gh api "repos/${REPO}/git/refs/heads/${HEAD_REF}" >/dev/null 2>&1; then
+            echo "Branch already absent; nothing to delete."
+          else
+            echo "Branch deletion failed and the branch still exists." >&2
+            exit 1
+          fi

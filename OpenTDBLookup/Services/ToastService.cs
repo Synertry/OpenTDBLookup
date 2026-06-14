@@ -46,7 +46,11 @@ public sealed class ToastService : IToastService, IDisposable
             _window.Show();
             _window.Topmost = true;
 
-            _hideTimer?.Stop();
+            if (_hideTimer is not null)
+            {
+                _hideTimer.Stop();
+                _hideTimer.Tick -= OnHideTick;
+            }
             _hideTimer = new DispatcherTimer { Interval = duration };
             _hideTimer.Tick += OnHideTick;
             _hideTimer.Start();

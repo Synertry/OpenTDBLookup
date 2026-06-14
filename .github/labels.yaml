@@ -23,6 +23,7 @@
           - '.github/CODEOWNERS'
           - '.github/workflows/**/*.yaml'
           - '.github/workflows/**/*.yml'
+          - '.github/api/**'
           - '.github/dependabot.yaml'
           - '.github/labels.yaml'
           - '.github/pull-request-size.yaml'

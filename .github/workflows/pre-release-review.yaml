@@ -35,12 +35,15 @@ jobs:
 
       - name: Generate & Post Summary
         run: |
+          set -euo pipefail
           echo "Generating Change Report..."
 
           COMMITS=$(git log origin/$BASE_REF..origin/$HEAD_REF --pretty=format:"- [\`%h\`](https://github.com/${{ github.repository }}/commit/%H) **%an**: %s")
           FILES=$(git diff --name-status origin/$BASE_REF..origin/$HEAD_REF)
-          CHANGED_COUNT=$(echo "$FILES" | wc -l)
-          COMMIT_COUNT=$(echo "$COMMITS" | wc -l)
+          # wc -l on an empty string still reports 1 because the here-string adds
+          # a newline, so count explicitly and report 0 for an empty diff.
+          if [ -z "$FILES" ]; then CHANGED_COUNT=0; else CHANGED_COUNT=$(printf '%s\n' "$FILES" | wc -l); fi
+          if [ -z "$COMMITS" ]; then COMMIT_COUNT=0; else COMMIT_COUNT=$(printf '%s\n' "$COMMITS" | wc -l); fi
 
           REPORT=$(cat <<EOF
           ## Release Candidate Summary

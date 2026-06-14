@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpenTDBLookup.Services;
@@ -45,12 +46,15 @@ public partial class ScrapeProgressViewModel : ViewModelBase, IProgress<ScrapePr
 
     public void Report(ScrapeProgress value)
     {
-        CurrentCategory = value.CurrentCategory;
-        CurrentDifficulty = value.CurrentDifficulty;
-        ApiCallsMade = value.ApiCallsMade;
-        ApiCallsCeiling = value.ApiCallsCeiling;
-        QuestionsAdded = value.QuestionsAdded;
-        PercentComplete = value.PercentComplete;
+        Dispatcher.UIThread.Post(() =>
+        {
+            CurrentCategory = value.CurrentCategory;
+            CurrentDifficulty = value.CurrentDifficulty;
+            ApiCallsMade = value.ApiCallsMade;
+            ApiCallsCeiling = value.ApiCallsCeiling;
+            QuestionsAdded = value.QuestionsAdded;
+            PercentComplete = value.PercentComplete;
+        });
     }
 
     [RelayCommand]
