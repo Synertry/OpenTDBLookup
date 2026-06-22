@@ -23,7 +23,7 @@ jobs:
       is_dependabot: ${{ steps.detect_dependabot.outputs.is_dependabot }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@v7.0.0
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 2 # need HEAD^ for diff
@@ -97,7 +97,7 @@ jobs:
       pull-requests: write # dependency-review summary comment
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@v7.0.0
         with:
           ref: ${{ github.head_ref }}
 
@@ -166,7 +166,7 @@ jobs:
       GH_TOKEN: ${{ secrets.PAT }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
           token: ${{ secrets.PAT }}
