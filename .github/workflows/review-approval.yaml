@@ -161,7 +161,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.validate.outputs.validated_sha != ''
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
           token: ${{ secrets.PAT }}
