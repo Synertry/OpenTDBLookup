@@ -221,7 +221,7 @@ jobs:
         # event actually cascades. GitHub Actions has a guardrail: events
         # triggered by GITHUB_TOKEN do NOT fire downstream workflows (loop
         # protection). Without this, notify.yaml never runs.
-        uses: softprops/action-gh-release@v3.0.0
+        uses: softprops/action-gh-release@v3.0.1
         with:
           token: ${{ secrets.PAT }}
           tag_name: ${{ needs.tag.outputs.version_tag }}
