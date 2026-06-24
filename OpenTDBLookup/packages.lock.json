@@ -47,9 +47,9 @@
       },
       "AvaloniaUI.DiagnosticsSupport": {
         "type": "Direct",
-        "requested": "[2.2.2, )",
-        "resolved": "2.2.2",
-        "contentHash": "KbGXkGTTYnW6UCipZNnjS3LyGH+PGMPfX+bTJ3uvdgRL3Nxpy/vPeW67ySpcU+qQicTUxRN75p6ciAwIfnqT8A==",
+        "requested": "[2.2.3, )",
+        "resolved": "2.2.3",
+        "contentHash": "kQCInYusi2c9tjd9hV05Lln6Csbo07kiC672M3G7dsalDBe2j+pOk3We2nzdyy5ptQYy/9gQiC8ZaHhb6u/5Kw==",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "8.0.0",
           "Microsoft.IO.RecyclableMemoryStream": "3.0.1"
