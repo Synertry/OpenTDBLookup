@@ -184,7 +184,7 @@ jobs:
         # workflow run + source commit + build environment. Free, cert-less,
         # and the primary integrity gate when code-signing is off. Verify with:
         #   gh attestation verify <binary> --owner Synertry
-        uses: actions/attest-build-provenance@v4.1.0
+        uses: actions/attest-build-provenance@v4.1.1
         with:
           subject-path: |
             ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64.exe
