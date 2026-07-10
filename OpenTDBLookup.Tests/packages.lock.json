@@ -385,7 +385,7 @@
           "Avalonia.Themes.Fluent": "[12.0.5, )",
           "AvaloniaUI.DiagnosticsSupport": "[2.2.3, )",
           "CommunityToolkit.Mvvm": "[8.4.2, )",
-          "FluentAvaloniaUI": "[3.0.0, )",
+          "FluentAvaloniaUI": "[3.0.1, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.9, )",
           "Microsoft.Extensions.Http": "[10.0.9, )",
           "Microsoft.Extensions.Logging": "[10.0.9, )",
@@ -458,9 +458,9 @@
       },
       "FluentAvaloniaUI": {
         "type": "CentralTransitive",
-        "requested": "[3.0.0, )",
-        "resolved": "3.0.0",
-        "contentHash": "wbixBAx/ZZPrDF2a4LIvEbbhK/LZUXaiHeDsEhNIF3B+wrHUr+Z7iE1mop3viog6islW14FniS4pBjZ9PvfcCQ==",
+        "requested": "[3.0.1, )",
+        "resolved": "3.0.1",
+        "contentHash": "0460k2EUT830QK064oYa5FEOe3p6ZampJ0DC03bvADZN+MlbocVwP/UFKLqlLSGqt1BsYOiLjjMZt/6QGOygUA==",
         "dependencies": {
           "Avalonia": "12.0.0",
           "Avalonia.Controls.ColorPicker": "12.0.0",
