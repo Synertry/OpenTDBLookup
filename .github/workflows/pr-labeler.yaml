@@ -24,7 +24,7 @@ jobs:
       # dependabot.yaml, so skip only this file-based labeler step for bot PRs
       # to stop sync-labels stripping them. The size-labeler job below is
       # independent and still runs on every PR.
-      - uses: actions/labeler@v6.1.0
+      - uses: actions/labeler@v6.2.0
         if: ${{ github.actor != 'dependabot[bot]' }}
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
