@@ -23,7 +23,7 @@ jobs:
       is_dependabot: ${{ steps.detect_dependabot.outputs.is_dependabot }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 2 # need HEAD^ for diff
@@ -97,12 +97,12 @@ jobs:
       pull-requests: write # dependency-review summary comment
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.head_ref }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5.3.0
+        uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: '10.0.x'
 
@@ -121,7 +121,7 @@ jobs:
       # languages. C# is autobuild-friendly but we use our own restored build
       # for reproducibility.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.36.2
+        uses: github/codeql-action/init@v4.37.1
         with:
           languages: csharp
           build-mode: manual
@@ -130,7 +130,7 @@ jobs:
         run: dotnet build -c Release --no-restore
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.36.2
+        uses: github/codeql-action/analyze@v4.37.1
 
       - name: Dependency Review
         # Compares the dep graph on main vs release. Runs on every push to main
@@ -166,7 +166,7 @@ jobs:
       GH_TOKEN: ${{ secrets.PAT }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.PAT }}

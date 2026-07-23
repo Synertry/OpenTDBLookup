@@ -21,7 +21,7 @@ jobs:
       created: ${{ steps.create_tag.outputs.created }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           filter: blob:none # skip file contents; we only need history for semver
@@ -29,7 +29,7 @@ jobs:
 
       - name: Calculate Next Version
         id: semver
-        uses: PaulHatch/semantic-version@v6.0.2
+        uses: PaulHatch/semantic-version@v6.0.3
         with:
           search_commit_body: true
           enable_prerelease_mode: true
@@ -75,7 +75,7 @@ jobs:
         shell: pwsh
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           ref: refs/tags/${{ needs.tag.outputs.version_tag }}
           # Fetch the tag explicitly with a small retry loop in case the tag push
@@ -101,7 +101,7 @@ jobs:
           exit 1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5.3.0
+        uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: '10.0.x'
 
@@ -184,7 +184,7 @@ jobs:
         # workflow run + source commit + build environment. Free, cert-less,
         # and the primary integrity gate when code-signing is off. Verify with:
         #   gh attestation verify <binary> --owner Synertry
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@v4.1.1
         with:
           subject-path: |
             ./publish/OpenTDBLookup-${{ needs.tag.outputs.version_tag }}-win-x64.exe
@@ -221,7 +221,7 @@ jobs:
         # event actually cascades. GitHub Actions has a guardrail: events
         # triggered by GITHUB_TOKEN do NOT fire downstream workflows (loop
         # protection). Without this, notify.yaml never runs.
-        uses: softprops/action-gh-release@v3.0.0
+        uses: softprops/action-gh-release@v3.0.2
         with:
           token: ${{ secrets.PAT }}
           tag_name: ${{ needs.tag.outputs.version_tag }}
