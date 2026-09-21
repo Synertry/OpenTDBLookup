@@ -5,7 +5,7 @@
 
   <!-- Shared analyzers (referenced for every project via Directory.Build.props) -->
   <ItemGroup>
-    <PackageVersion Include="Roslynator.Analyzers" Version="4.16.1" />
+    <PackageVersion Include="Roslynator.Analyzers" Version="5.0.0" />
   </ItemGroup>
 
   <!-- Application dependencies (OpenTDBLookup) -->
