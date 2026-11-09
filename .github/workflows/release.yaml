@@ -29,7 +29,7 @@ jobs:
 
       - name: Calculate Next Version
         id: semver
-        uses: PaulHatch/semantic-version@v6.0.5
+        uses: PaulHatch/semantic-version@v6.0.7
         with:
           search_commit_body: true
           enable_prerelease_mode: true
@@ -101,7 +101,7 @@ jobs:
           exit 1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: '10.0.x'
 
