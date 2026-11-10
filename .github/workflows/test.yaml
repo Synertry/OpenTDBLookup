@@ -34,7 +34,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Setup .NET ${{ inputs.dotnet-version }}
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
@@ -66,7 +66,7 @@ jobs:
 
       - name: Upload coverage report
         if: always() # upload even when tests fail so we can diagnose
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: coverage-${{ inputs.os }}-${{ inputs.dotnet-version }}-${{ github.run_id }}
           path: coverage/**/coverage.cobertura.xml
