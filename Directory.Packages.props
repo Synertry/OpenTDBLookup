@@ -29,7 +29,7 @@
 
   <!-- Test dependencies (OpenTDBLookup.Tests) -->
   <ItemGroup>
-    <PackageVersion Include="coverlet.collector" Version="10.1.0" />
+    <PackageVersion Include="coverlet.collector" Version="10.1.1" />
     <PackageVersion Include="FluentAssertions" Version="8.11.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.1.0" />
