@@ -102,7 +102,7 @@ jobs:
           ref: ${{ github.head_ref }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: '10.0.x'
 
@@ -121,7 +121,7 @@ jobs:
       # languages. C# is autobuild-friendly but we use our own restored build
       # for reproducibility.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.38.0
+        uses: github/codeql-action/init@v4.39.4
         with:
           languages: csharp
           build-mode: manual
@@ -130,14 +130,14 @@ jobs:
         run: dotnet build -c Release --no-restore
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.38.0
+        uses: github/codeql-action/analyze@v4.39.4
 
       - name: Dependency Review
         # Compares the dep graph on main vs release. Runs on every push to main
         # so dep changes are gated before they reach the release branch via the
         # integrate auto-PR. base/head refs are explicit because this is a push
         # event, not a PR (the action defaults pull from PR context).
-        uses: actions/dependency-review-action@v5.0.0
+        uses: actions/dependency-review-action@v5.0.1
         with:
           base-ref: refs/heads/release
           head-ref: refs/heads/main
